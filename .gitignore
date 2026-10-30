@@ -4,3 +4,8 @@ Thumbs.db
 
 # Build output
 dist/
+
+# Secrets (API keys, access code)
+.env
+.env.*
+!.env.example

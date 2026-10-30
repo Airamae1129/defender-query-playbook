@@ -159,6 +159,55 @@ footer.src{padding-block:8px 32px;color:var(--muted);font-size:.8rem;text-align:
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 <style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<style>
+/* OSINT tab: Queries / OSINT view switch, access-code gate, indicator cards, results copy block. */
+.views{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--panel);padding:2px}
+.views button{border:0;background:transparent;border-radius:999px;padding:5px 14px;font-weight:700;font-size:.86rem;cursor:pointer;color:var(--muted)}
+.views button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+body.view-osint #q,body.view-osint .search,body.view-osint #addBtn,body.view-osint #filters,body.view-osint main.grid{display:none!important}
+#osint{padding-block:16px 8px}
+.os-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.os-grid{grid-template-columns:1fr}}
+.os-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.os-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.os-panel h3{margin:0 0 10px;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.os-panel h3 span{font-family:var(--f-mono);color:var(--muted);letter-spacing:0;text-transform:none;font-weight:500}
+.os-muted{color:var(--muted);font-size:.84rem}
+.os-err{color:var(--sev-high);font-size:.84rem}
+.os-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.os-input{flex:1 1 220px;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 10px;font-family:var(--f-mono);font-size:.84rem}
+.btn.xs{padding:3px 9px;font-size:.78rem;border-radius:6px}
+.ocard{border:1px solid var(--line);border-left:4px solid var(--vb,var(--line));border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--panel)}
+.ocard+.ocard{margin-top:10px}
+.ocard-h{display:flex;gap:8px;align-items:center}
+.ocard-v{font-family:var(--f-mono);font-size:.86rem;word-break:break-all;flex:1}
+.kind{font-family:var(--f-mono);font-size:.7rem;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted)}
+.xbtn{border:0;background:transparent;cursor:pointer;font-size:1.1rem;line-height:1;color:var(--muted)}
+.prov{display:flex;flex-direction:column;gap:4px;font-size:.82rem;background:var(--sunk);border-radius:6px;padding:8px}
+.prov-row{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.pl{font-size:.7rem;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--sunk);border:1px solid var(--line)}
+.pl.ok{color:var(--sev-low)} .pl.error{color:var(--sev-high)} .pl.rate_limited{color:var(--sev-med)} .pl.not_configured{color:var(--muted)}
+.vb-Clean{--vb:var(--sev-low)} .vb-Low-risk{--vb:var(--sev-med)} .vb-Malicious{--vb:var(--sev-high)} .vb-Not-checked{--vb:var(--line)}
+.links{display:flex;flex-wrap:wrap;gap:6px}
+.links a{font-size:.76rem;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+.ocard-f{display:flex;gap:8px;flex-wrap:wrap}
+.ocard-f select{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:5px 8px}
+.ocard-f input{flex:1 1 200px}
+.tally{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tally div{border:1px solid var(--line);border-top:3px solid var(--vb);border-radius:8px;padding:6px 8px;text-align:center;font-size:.78rem}
+.tally b{display:block;font-family:var(--f-mono);font-size:1.2rem}
+.shot{max-height:200px;object-fit:cover;object-position:top;width:100%;border:1px solid var(--line);border-radius:6px}
+.shot-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center}
+.rchip{font-family:var(--f-mono);font-size:.76rem;border:1px solid var(--line);background:var(--sunk);border-radius:999px;padding:2px 10px;cursor:pointer}
+.rchip.off{opacity:.5;text-decoration:line-through}
+.copy-wrap{background:var(--code-bg);color:var(--code-fg);border-radius:8px}
+.copy-bar{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:6px 8px;border-bottom:1px solid #ffffff1a;flex-wrap:wrap}
+.copy-bar label{margin-right:auto;font-size:.8rem;display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.copy-wrap pre{margin:0;padding:12px;white-space:pre-wrap;word-break:break-word;font-family:var(--f-mono);font-size:.8rem;max-height:460px;overflow:auto}
+.copy-wrap .btn{background:transparent;color:var(--code-fg);border-color:#ffffff33}
+.lock{max-width:440px;margin:24px auto}
+</style>
 </head>
 <body>
 
@@ -167,6 +216,7 @@ footer.src{padding-block:8px 32px;color:var(--muted);font-size:.8rem;text-align:
     <div class="top-row">
       <div class="brand"><h1>Defender Query Playbook</h1><span class="tag">ALERT → CONTEXT → KQL</span></div>
       <label class="search" for="q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search alert name, table, MITRE ID…" autocomplete="off"></label>
+      <div class="views" role="group" aria-label="View"><button type="button" data-view="queries" aria-pressed="true">Queries</button><button type="button" data-view="osint" aria-pressed="false">OSINT</button></div>
       <button class="btn primary" id="addBtn" type="button">+ Add alert</button>
     </div>
     <div class="filters" id="filters" role="toolbar" aria-label="Filter by category"></div>
@@ -178,6 +228,7 @@ footer.src{padding-block:8px 32px;color:var(--muted);font-size:.8rem;text-align:
     <nav class="rail" aria-label="Alerts"><div class="rail-list" id="list"></div></nav>
     <section class="detail" id="detail" aria-live="polite"></section>
   </main>
+  <section id="osint" hidden aria-label="OSINT"></section>
   <footer class="src">Defender Query Playbook · Owner: Aira Mae Bugay · Test every query in your own tenant before relying on it.</footer>
 </div>
 
@@ -680,6 +731,293 @@ state.sel = store.get("dqp-sel") || (BUILTIN[0] && BUILTIN[0].id);
 renderFilters(); renderList(); renderDetail();
 new MutationObserver(()=>store.set("dqp-sel", state.sel||"")).observe($("#detail"), {childList:true});
 connect();
+</script>
+
+<script>
+/* ================= OSINT tab =================
+   Lookups run on the playbook server (server.mjs) with server-held API keys, behind a team access code.
+   Indicators, results and screenshot links live only in this page's memory and clear on reload. */
+(function(){
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ss = { get(k){ try{ return sessionStorage.getItem(k) }catch(e){ return null } }, set(k,v){ try{ v==null?sessionStorage.removeItem(k):sessionStorage.setItem(k,v) }catch(e){} } };
+const ls = { get(k){ try{ return localStorage.getItem(k) }catch(e){ return null } }, set(k,v){ try{ localStorage.setItem(k,v) }catch(e){} } };
+const note = (msg) => { const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); };
+
+const VERDICTS = ["Not checked","Clean","Low risk","Malicious"];
+const LABEL = { ip:"IP", domain:"Domain", url:"URL", hash:"Hash" };
+const STATUS = { ok:"ok", error:"error", not_configured:"Not configured", rate_limited:"rate limited" };
+const vcls = v => "vb-" + v.replace(/\s+/g,"-");
+const e = encodeURIComponent;
+const LINKS = {
+  IP: v => [["AbuseIPDB",`https://www.abuseipdb.com/check/${v}`],["VirusTotal",`https://www.virustotal.com/gui/ip-address/${v}`],["urlscan.io",`https://urlscan.io/search/#ip:${v}`],["Shodan",`https://www.shodan.io/host/${v}`],["AlienVault OTX",`https://otx.alienvault.com/indicator/ip/${v}`],["Cisco Talos",`https://talosintelligence.com/reputation_center/lookup?search=${v}`]],
+  Domain: v => [["VirusTotal",`https://www.virustotal.com/gui/domain/${v}`],["urlscan.io",`https://urlscan.io/search/#domain:${v}`],["OTX",`https://otx.alienvault.com/indicator/domain/${v}`],["Talos",`https://talosintelligence.com/reputation_center/lookup?search=${v}`],["ICANN WHOIS",`https://lookup.icann.org/en/lookup?name=${v}`]],
+  URL: v => [["VirusTotal",`https://www.virustotal.com/gui/search/${e(v)}`],["urlscan.io",`https://urlscan.io/search/#${e(`page.url:"${v}"`)}`],["URLhaus",`https://urlhaus.abuse.ch/browse.php?search=${e(v)}`]],
+  Hash: v => [["VirusTotal",`https://www.virustotal.com/gui/file/${v}`],["MalwareBazaar",`https://bazaar.abuse.ch/browse.php?search=${e(`sha256:${v}`)}`],["Hybrid Analysis",`https://www.hybrid-analysis.com/search?query=${v}`],["OTX",`https://otx.alienvault.com/indicator/file/${v}`]],
+};
+
+const S = { server:null, code: ss.get("dqp-osint-code") || "", info:null, items:[], shots:[], busy:{}, err:"", lockErr:"", defang: ls.get("dqp-osint-defang")==="1" };
+
+async function call(path, body){
+  let res;
+  try{
+    res = await fetch(path, { method: body ? "POST" : "GET", credentials:"same-origin",
+      headers: { "Accept":"application/json", "X-Requested-With":"XMLHttpRequest", ...(S.code ? {"X-Access-Code": S.code} : {}), ...(body ? {"Content-Type":"application/json"} : {}) },
+      body: body ? JSON.stringify(body) : undefined });
+  }catch(err){ throw Object.assign(new Error("Can't reach the playbook server."), {status:0}); }
+  const j = await res.json().catch(()=>({}));
+  if(!res.ok) throw Object.assign(new Error(j?.error?.message || `HTTP ${res.status}`), {status:res.status, code:j?.error?.code});
+  return j;
+}
+
+/* ---- defang for copied text (same rules as SOC Triage Desk) ---- */
+const FILE_EXT = new Set("exe dll sys ps1 psm1 psd1 bat cmd vbs vbe js jse wsf hta lnk scr msi msp iso img vhd zip rar 7z gz tgz tar cab doc docx docm dot xls xlsx xlsm xlsb ppt pptx pptm one pdf rtf txt log csv tsv json xml html htm mht ini cfg conf dat tmp bak old png jpg jpeg gif svg webp bmp ico py sh pl rb php asp aspx jsp db sqlite sql evtx etl md yml yaml toml jar class apk dmg pkg deb rpm".split(" "));
+const SOURCE_NAMES = new Set(["urlscan.io","virustotal.com","abuseipdb.com","screenshotbase.com"]);
+const DEFANG_RE = new RegExp([/\bhttps?:\/\/[^\s<>"'`)\]]+/.source, /\b[\w.+%-]+@(?:[A-Za-z0-9-]+\.)+[a-z]{2,24}\b/.source, /\b(?:\d{1,3}\.){3}\d{1,3}\b/.source, /\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[a-z]{2,24}\b/.source].map(x=>`(${x})`).join("|"), "g");
+const dots = x => x.replace(/\./g,"[.]");
+function defangText(text){
+  return String(text ?? "").replace(DEFANG_RE, (m, url, email, ip, dom) => {
+    if(url){ if(/\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(url)) return url; const [, sch, host, rest] = url.match(/^(https?):\/\/([^/?#]*)(.*)$/i); return `${sch.replace(/t/gi,"x")}://${dots(host)}${rest}`; }
+    if(email){ const [u,d] = email.split("@"); return `${u}[@]${dots(d)}`; }
+    if(ip) return ip.split(".").every(o=>+o<=255) ? dots(ip) : ip;
+    const tld = dom.slice(dom.lastIndexOf(".")+1);
+    return FILE_EXT.has(tld) || SOURCE_NAMES.has(dom.toLowerCase()) ? dom : dots(dom);
+  });
+}
+
+/* ---- copy format (same as SOC Triage Desk "Results") ---- */
+function srcLine(name, d, err){
+  if(err) return err;
+  if(!d) return "Not checked";
+  if(name==="abuseipdb") return `${d.score}% abuse confidence, ${d.reports} reports${d.isp?` – ${d.isp}`:""}${d.country?` (${d.country})`:""}${d.usageType?`, ${d.usageType}`:""}`;
+  if(name==="virustotal") return d.found ? `${d.malicious}/${d.total} malicious, ${d.suspicious} suspicious${d.asOwner?` – ${d.asOwner}`:""}` : "Not found";
+  const link = d.latest?.result;
+  return `${d.hits} existing scans, ${d.malicious?`${d.malicious} flagged malicious`:"none flagged malicious"}${link?` – latest: ${link}`:""}`;
+}
+const normUrl = u => String(u||"").trim().toLowerCase().replace(/^https?:\/\//,"").replace(/\/+$/,"");
+const hostOf = u => normUrl(u).split(/[/?#]/)[0].replace(/^www\./,"");
+const shotMatches = (it, sh) => it.type==="domain" ? hostOf(sh.page)===it.value.replace(/^www\./,"") : normUrl(sh.page)===normUrl(it.value);
+function summary(){
+  const items = S.items.filter(i=>!i.hidden);
+  const grp = { ip:[], web:[], hash:[] };
+  items.forEach(i => grp[i.type==="ip"?"ip":i.type==="hash"?"hash":"web"].push(i));
+  const used = new Set();
+  const block = (i, sources) => {
+    const rs = i.lookup?.results || [];
+    const by = Object.fromEntries(rs.map(r=>[r.provider, r]));
+    const L = [`${i.value}${i.type!=="ip"?` (${LABEL[i.type]})`:""}`,
+      ...sources.map(([k,label]) => { const r = by[k]; return `${label}: ${r ? srcLine(k, r.status==="ok"?r.data:null, r.status!=="ok"&&r.status!=="not_configured" ? (r.error||STATUS[r.status]) : null) : "Not checked"}`; })];
+    if(i.type!=="ip" && i.type!=="hash") S.shots.filter(sh=>shotMatches(i, sh)).forEach(sh => { used.add(sh.url); L.push(`Screenshotbase (URL to image): ${sh.url}`); });
+    L.push(`Verdict: ${i.verdict}${i.note ? ` – ${i.note}` : ""}`);
+    return L.join("\n");
+  };
+  const L = [];
+  if(grp.ip.length) L.push("IP(s) Reputation:", grp.ip.map(i=>block(i,[["abuseipdb","AbuseIPDB"],["virustotal","VirusTotal"]])).join("\n\n"), "");
+  if(grp.web.length) L.push("URL/Domain Reputation:", grp.web.map(i=>block(i,[["virustotal","VirusTotal"],["urlscan","URLscan.io"]])).join("\n\n"), "");
+  if(grp.hash.length) L.push("File Hash Reputation:", grp.hash.map(i=>block(i,[["virustotal","VirusTotal"]])).join("\n\n"), "");
+  const rest = S.shots.filter(sh=>!used.has(sh.url));
+  if(rest.length) L.push("Screenshotbase (URL to image):", ...rest.map(sh=>`${sh.page} → ${sh.url}`), "");
+  return L.length ? L.join("\n").trim() : "Nothing in results yet. Add indicators to check.";
+}
+
+/* ---- one readable line per provider ---- */
+function provLine(r){
+  const d = r.data;
+  if(r.status!=="ok" || !d) return r.error || STATUS[r.status];
+  switch(r.provider){
+    case "abuseipdb": return `${d.score}% confidence · ${d.reports} reports${d.isp?` · ${d.isp}`:""}${d.country?` (${d.country})`:""}${d.usageType?` · ${d.usageType}`:""}${d.isTor?" · Tor":""}`;
+    case "virustotal": return d.found ? `${d.malicious}/${d.total} malicious · ${d.suspicious} suspicious · ${d.harmless} harmless${d.reputation!=null?` · reputation ${d.reputation}`:""}${d.asOwner?` · ${d.asOwner}`:""}` : "Not found";
+    case "urlscan": return `${d.hits} existing scans${d.malicious?` · ${d.malicious} flagged malicious`:""}`;
+    case "shodan": return d.found ? `${d.ports.length?`ports ${d.ports.slice(0,10).join(", ")}`:"no open ports"}${d.org?` · ${d.org}`:""}${d.vulns?` · ${d.vulns} CVEs`:""}` : "Not found";
+    case "otx": return `${d.pulses} pulses${d.tags?.length?` · ${d.tags.slice(0,5).join(", ")}`:""}`;
+  }
+  return "";
+}
+const when = iso => { try{ return new Date(iso).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) }catch(e){ return "" } };
+
+/* ---- rendering ---- */
+function render(){
+  const root = $("#osint");
+  if(S.server===false){
+    root.innerHTML = `<div class="os-panel lock"><h3>OSINT</h3><p>OSINT lookups need the playbook server, which holds the API keys.</p><p class="os-muted">Run <b>node server.mjs</b> in the playbook folder and open the address it prints, or use the hosted copy. Opening index.html straight from disk can't run lookups.</p></div>`;
+    return;
+  }
+  if(S.server && !S.server.enabled){
+    root.innerHTML = `<div class="os-panel lock"><h3>OSINT</h3><p>OSINT is turned off on this server.</p><p class="os-muted">Set <b>PLAYBOOK_ACCESS_CODE</b> and the provider API keys in the server's settings (.env locally, Environment on Render), then restart.</p></div>`;
+    return;
+  }
+  if(!S.info){
+    root.innerHTML = `<form class="os-panel lock" id="osLock"><h3>OSINT</h3><p class="os-muted">Enter the team access code to run lookups with the server's API keys. It is kept only for this browser tab.</p>
+      <div class="os-row"><input class="os-input" id="osCode" type="password" autocomplete="off" placeholder="Access code" value=""><button class="btn primary">Unlock</button></div>
+      ${S.lockErr?`<p class="os-err" role="alert">${esc(S.lockErr)}</p>`:""}</form>`;
+    return;
+  }
+  const items = S.items, anyBusy = Object.values(S.busy).some(Boolean);
+  const tally = VERDICTS.map(v => [v, items.filter(i=>i.verdict===v).length]);
+  const text = summary();
+  root.innerHTML = `<div class="os-grid">
+    <div class="os-col">
+      <div class="os-panel"><h3>Indicators to check <span>${items.length}</span></h3>
+        ${items.length ? items.map(card).join("") : `<p class="os-muted">Nothing to check yet. Add IPs, domains, URLs or hashes on the right.</p>`}
+      </div>
+    </div>
+    <div class="os-col">
+      <div class="os-panel"><h3>Add indicators</h3>
+        <form class="os-row" id="osAdd"><input class="os-input" id="osAddIn" placeholder="IPs, domains, URLs or hashes (spaces or commas)" autocomplete="off"><button class="btn primary">Add</button></form>
+        ${S.err?`<p class="os-err" role="alert">${esc(S.err)}</p>`:""}
+      </div>
+      <div class="os-panel"><h3>Lookups</h3>
+        <p class="os-muted">Lookups run on the server with the team's API keys and are cached for ${S.info.cacheHours} hours. IPs: AbuseIPDB and VirusTotal; URLs and domains: VirusTotal and urlscan.io search; hashes: VirusTotal. A verdict you set by hand is kept.</p>
+        <div class="os-row"><button class="btn primary" data-os="all" ${!items.length||anyBusy?"disabled":""}>${anyBusy?"Running…":`Run all (${items.length})`}</button>
+          <button class="btn ghost" data-os="lock" title="Forget the access code in this tab">Lock</button></div>
+        <div class="os-row" style="margin-top:8px">${S.info.providers.map(p=>`<span class="pl ${p.configured?"ok":"not_configured"}">${esc(p.label)}: ${p.configured?"on":"Not configured"}</span>`).join("")}</div>
+      </div>
+      <div class="os-panel"><h3>Reputation tally</h3>
+        <div class="tally">${tally.map(([v,n])=>`<div class="${vcls(v)}"><b>${n}</b>${esc(v)}</div>`).join("")}</div>
+        <p class="os-muted" style="margin-bottom:0">Do not look up or scan client-internal URLs. Private and internal addresses are refused by the server.</p>
+      </div>
+      <div class="os-panel"><h3>Screenshotbase (URL to image) <span>${S.info.screenshotsToday} today</span></h3>
+        <p class="os-muted">Optional. Type a URL and confirm to get a hosted PNG link for the ticket. Each screenshot uses the API quota, so nothing runs until you confirm.</p>
+        <form class="os-row" id="osShot"><input class="os-input" id="osShotIn" placeholder="https://example.com/login" autocomplete="off"><button class="btn primary" ${S.info.screenshot?"":"disabled"}>Generate</button></form>
+        ${S.info.screenshot?"":`<p class="os-muted">Screenshot API key not configured.</p>`}
+        ${S.shots.length?`<ul class="shot-list">${[...S.shots].reverse().map(sh=>`<li><a href="${esc(sh.url)}" target="_blank" rel="noopener noreferrer"><img class="shot" src="${esc(sh.url)}" alt="Screenshot of ${esc(sh.page)}"></a>
+          <div class="os-muted" style="font-family:var(--f-mono);word-break:break-all">${esc(sh.page)}</div>
+          <div class="os-row"><button class="btn xs" data-os="copyshot" data-v="${esc(sh.url)}">Copy image URL</button><a class="btn xs" href="${esc(sh.url)}" target="_blank" rel="noopener noreferrer">Open</a><button class="btn xs" data-os="rmshot" data-v="${esc(sh.url)}">Remove</button></div></li>`).join("")}</ul>`:""}
+      </div>
+      <div class="os-panel"><h3>Results</h3>
+        ${items.length?`<div class="chips"><span class="os-muted">In results (× to leave one out):</span>${items.map(i=>`<button class="rchip ${i.hidden?"off":""}" data-os="hide" data-v="${esc(i.value)}" title="${i.hidden?"Add back to results":"Remove from results"}">${esc(i.value)} ${i.hidden?"+":"×"}</button>`).join("")}</div>`:""}
+        <div class="copy-wrap"><div class="copy-bar"><label><input type="checkbox" id="osDefang" ${S.defang?"checked":""}> Defang indicators</label>
+          <button class="btn xs" data-os="clear" ${!items.length&&!S.shots.length?"disabled":""}>Clear</button><button class="btn xs" data-os="copy">Copy</button></div>
+          <pre id="osText">${esc(S.defang?defangText(text):text)}</pre></div>
+      </div>
+    </div></div>`;
+}
+
+function card(it, i){
+  const kind = LABEL[it.type], web = it.type==="url"||it.type==="domain", busy = !!S.busy[it.value];
+  const shot = [...S.shots].reverse().find(sh => shotMatches(it, sh));
+  const urlscanOn = S.info.providers.some(p=>p.name==="urlscan"&&p.configured);
+  const L = it.lookup;
+  return `<article class="ocard ${vcls(it.verdict)}" data-i="${i}">
+    <div class="ocard-h"><span class="kind">${kind}</span><span class="ocard-v">${esc(it.value)}</span><button class="xbtn" data-os="rm" data-v="${esc(it.value)}" aria-label="Remove indicator">×</button></div>
+    <div class="os-row">
+      <button class="btn xs primary" data-os="run" data-v="${esc(it.value)}" ${busy?"disabled":""}>${busy?"Running…":"Run lookups"}</button>
+      ${L?`<button class="btn xs" data-os="refresh" data-v="${esc(it.value)}" ${busy?"disabled":""} title="Skip the cache and ask the providers again">Refresh</button>`:""}
+      ${web&&urlscanOn?`<button class="btn xs" data-os="scan" data-v="${esc(it.value)}">Scan</button>`:""}
+      ${web&&S.info.screenshot?`<button class="btn xs" data-os="shot" data-v="${esc(it.value)}">Screenshot</button>`:""}
+    </div>
+    ${L?`<div class="prov">${L.results.map(r=>`<div class="prov-row"><b>${esc(r.label)}</b><span class="pl ${r.status}">${STATUS[r.status]}</span>${r.status==="not_configured"?"":`<span>${esc(provLine(r))}</span>`}${r.provider==="urlscan"&&r.data?.latest?.result?` <a href="${esc(r.data.latest.result)}" target="_blank" rel="noopener noreferrer">latest scan</a>`:""}${r.fetchedAt?` <span class="os-muted">${r.cached?"cached":"fetched"} ${esc(when(r.fetchedAt))}</span>`:""}</div>`).join("")}
+      ${L.summary?`<div style="font-family:var(--f-mono);word-break:break-word">${esc(L.summary)}</div>`:""}</div>`:""}
+    ${shot?`<a href="${esc(shot.url)}" target="_blank" rel="noopener noreferrer"><img class="shot" src="${esc(shot.url)}" alt="Screenshot of ${esc(it.value)}"></a>`:""}
+    <div class="links">${LINKS[kind](it.value).map(([n,u])=>`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(n)} ↗</a>`).join("")}</div>
+    <div class="ocard-f"><select data-os="verdict" data-v="${esc(it.value)}" aria-label="Verdict">${VERDICTS.map(v=>`<option ${v===it.verdict?"selected":""}>${v}</option>`).join("")}</select>
+      <input class="os-input" data-os="note" data-v="${esc(it.value)}" placeholder="${esc(L?.summary || "Finding note (e.g. AbuseIPDB 0%, VT 0/94)")}" value="${esc(it.note)}"></div>
+    ${L?`<p class="os-muted" style="margin:0">Suggested: <b>${esc(L.verdict)}</b>${it.manual&&L.verdict!==it.verdict?" · your verdict is kept":""}</p>`:""}
+  </article>`;
+}
+
+/* ---- actions ---- */
+const find = v => S.items.find(i=>i.value===v);
+async function unlock(code){
+  S.code = code; S.lockErr = "";
+  try{ S.info = await call("/api/osint/check", {}); ss.set("dqp-osint-code", code); }
+  catch(err){ S.info = null; S.code = ""; ss.set("dqp-osint-code", null); S.lockErr = err.message; }
+  render();
+}
+async function run(it, force){
+  S.busy[it.value] = true; render();
+  try{
+    const r = await call("/api/osint/lookup", { indicator: it.value, type: it.type, force });
+    it.lookup = r; if(!it.manual) it.verdict = r.verdict;
+    const bad = r.results.filter(x=>x.status==="error"||x.status==="rate_limited");
+    if(bad.length) note(`${it.value}: ${bad.map(x=>`${x.label} ${STATUS[x.status]}`).join(", ")}`);
+  }catch(err){ if(err.status===401){ S.info=null; S.lockErr="Access code no longer accepted. Enter it again."; } else note(`${it.value}: ${err.message}`); }
+  finally{ S.busy[it.value] = false; render(); }
+}
+async function confirmRun(kind, raw){
+  const u = String(raw||"").trim(); if(!u) return note("Enter the URL first.");
+  const url = /^https?:\/\//i.test(u) ? u : `https://${u}`;
+  const msg = kind==="shot"
+    ? `Take a screenshot?\n\nThis sends ${url} to screenshotbase.com, which loads the page and stores the PNG at a public link. Each screenshot uses the API quota (${S.info.screenshotsToday} taken today). Don't use it on URLs that identify the client.`
+    : `Submit a urlscan.io scan?\n\nurlscan.io will load ${url} from its servers. The scan is submitted as private, but it still uses the team's scan quota. Never scan client-internal URLs.`;
+  if(!window.confirm(msg)) return;
+  try{
+    if(kind==="shot"){
+      const r = await call("/api/osint/screenshot", { url, confirmed:true });
+      S.shots.push({ page:r.page, url:r.url, taken_at:r.taken_at }); S.info.screenshotsToday = r.count_today;
+      const inp = $("#osShotIn"); if(inp) inp.value = "";
+    } else {
+      const r = await call("/api/osint/urlscan-scan", { url, confirmed:true });
+      note(`urlscan.io scan submitted (${r.visibility}). Refresh the lookup in about a minute.`);
+      window.open(r.result, "_blank", "noopener");
+    }
+  }catch(err){ note(`${kind==="shot"?"Screenshot":"urlscan.io"}: ${err.message}`); }
+  render();
+}
+async function add(raw){
+  const parts = raw.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean);
+  if(!parts.length){ S.err = "Enter a value."; return render(); }
+  try{
+    const r = await call("/api/osint/validate", { indicators: parts });
+    let added = 0;
+    for(const { indicator, type } of r.ok){ if(!find(indicator)){ S.items.push({ value:indicator, type, verdict:"Not checked", note:"", manual:false, hidden:false, lookup:null }); added++; } }
+    const skipped = r.rejected.map(x=>`${x.value} (${x.reason.replace(/\.$/,"")})`);
+    S.err = skipped.length ? `${added?`Added ${added}. `:""}Not added: ${skipped.join("; ")}` : added ? "" : "Already in the list.";
+  }catch(err){ S.err = err.message; }
+  render();
+}
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); note("Copied"); }
+  catch(e){ const r=document.createRange(); const pre=$("#osText"); if(pre){ r.selectNodeContents(pre); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); note("Press Ctrl+C to copy"); } }
+}
+
+document.addEventListener("click", ev => {
+  const vb = ev.target.closest(".views button");
+  if(vb){ setView(vb.dataset.view); return; }
+  const b = ev.target.closest("[data-os]");
+  if(!b || !$("#osint").contains(b) || b.tagName==="SELECT" || b.tagName==="INPUT") return;
+  const v = b.dataset.v, it = v && find(v), act = b.dataset.os;
+  if(act==="run" && it) run(it, false);
+  else if(act==="refresh" && it) run(it, true);
+  else if(act==="all") (async()=>{ for(const x of [...S.items]) await run(x, false); })();
+  else if(act==="rm"){ S.items = S.items.filter(x=>x.value!==v); render(); }
+  else if(act==="hide" && it){ it.hidden = !it.hidden; render(); }
+  else if(act==="shot" && it) confirmRun("shot", it.type==="domain" ? `https://${it.value}` : it.value);
+  else if(act==="scan" && it) confirmRun("scan", it.type==="domain" ? `https://${it.value}` : it.value);
+  else if(act==="copy") copyText(S.defang ? defangText(summary()) : summary());
+  else if(act==="copyshot") copyText(v);
+  else if(act==="rmshot"){ S.shots = S.shots.filter(x=>x.url!==v); render(); }
+  else if(act==="clear"){ if(window.confirm("Clear all OSINT indicators, results and screenshot links?")){ S.items=[]; S.shots=[]; S.err=""; render(); } }
+  else if(act==="lock"){ S.info=null; S.code=""; ss.set("dqp-osint-code", null); render(); }
+});
+document.addEventListener("change", ev => {
+  const t = ev.target;
+  if(t.id==="osDefang"){ S.defang = t.checked; ls.set("dqp-osint-defang", t.checked?"1":"0"); render(); return; }
+  if(t.dataset?.os==="verdict"){ const it = find(t.dataset.v); if(it){ it.verdict = t.value; it.manual = t.value!=="Not checked"; render(); } }
+  if(t.dataset?.os==="note"){ const it = find(t.dataset.v); if(it){ it.note = t.value; render(); } }
+});
+document.addEventListener("submit", ev => {
+  if(ev.target.id==="osLock"){ ev.preventDefault(); unlock($("#osCode").value.trim()); }
+  if(ev.target.id==="osAdd"){ ev.preventDefault(); add($("#osAddIn").value); }
+  if(ev.target.id==="osShot"){ ev.preventDefault(); confirmRun("shot", $("#osShotIn").value); }
+});
+
+async function setView(view){
+  const osint = view==="osint";
+  document.body.classList.toggle("view-osint", osint);
+  $("#osint").hidden = !osint;
+  document.querySelectorAll(".views button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.view===view)));
+  try{ sessionStorage.setItem("dqp-view", view); }catch(e){}
+  if(!osint) return;
+  if(S.server===null){
+    try{ S.server = await call("/api/osint/status"); }catch(err){ S.server = false; }
+    if(S.server && S.server.enabled && S.code && !S.info){ await unlock(S.code); return; }
+  }
+  render();
+}
+let startView = "queries"; try{ startView = sessionStorage.getItem("dqp-view") || "queries"; }catch(e){}
+if(startView==="osint") setView("osint");
+})();
 </script>
 
 </body>

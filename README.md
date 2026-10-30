@@ -37,12 +37,26 @@ https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-schema-tables
 
 Test each query in your own tenant before relying on it.
 
+## OSINT tab
+
+The **OSINT** switch in the header opens the same OSINT checker as SOC Triage Desk: add IPs, domains, URLs or hashes (several at once), run lookups, set verdicts, and copy the results in the team format (IP(s) Reputation / URL/Domain Reputation / File Hash Reputation / Screenshotbase), with an optional Defang toggle.
+
+- Lookups run on the playbook server (`server.mjs`) with the API keys from `.env` (local) or Render's Environment settings. Keys are never sent to the browser.
+- IPs: AbuseIPDB + VirusTotal. URLs and domains: VirusTotal + urlscan.io search. Hashes: VirusTotal. Shodan and OTX turn on when their keys are set. Private and internal addresses are refused.
+- The tab asks for the team **access code** (`PLAYBOOK_ACCESS_CODE`). Ten wrong codes from one address lock it out for 15 minutes.
+- Screenshotbase screenshots and new urlscan.io scans run only after you confirm.
+- Indicators, results and screenshot links stay in the page's memory and clear on reload.
+
+Run locally with OSINT: copy `.env.example` to `.env`, fill in the keys and an access code, then `node server.mjs` and open http://localhost:3130.
+
 ## Deploy on Render
 
-The repo includes `render.yaml` (a Render Blueprint) for a free static site.
+The repo includes `render.yaml` (a Render Blueprint) for a free Node web service.
 
-1. Push this folder to a GitHub repository.
-2. In Render: **New → Blueprint**, pick the repository, and apply. Render runs `node scripts/validate.mjs && node scripts/build.mjs` and publishes `dist/`.
-3. Every push to the main branch redeploys automatically. A broken `data/alerts.js` fails the build, so the live site keeps the last good version.
+1. In Render: **New → Blueprint**, pick this repository, and apply. Render asks for the access code and API keys (paste them there; they never go in the repo).
+2. Render runs `node scripts/validate.mjs` and starts `node server.mjs`.
+3. Every push to the main branch redeploys automatically (the repository must be connected through Render's GitHub app). A broken `data/alerts.js` fails the build, so the live site keeps the last good version.
 
-The site is public to anyone with the link (Render static sites have no login). It holds only queries and fill-in tokens, never tenant data, and nothing typed into the page leaves the browser. On Render the **+ Add alert** form offers **Copy as JSON**; paste the result into `data/alerts.js` and push.
+The query pages are public to anyone with the link; the OSINT tab needs the access code. Free services sleep when idle, so the first visit after a while takes about a minute. On Render the **+ Add alert** form offers **Copy as JSON**; paste the result into `data/alerts.js` and push.
+
+To host only the queries as a static site instead (no OSINT), run `node scripts/build.mjs` and publish `dist/`.

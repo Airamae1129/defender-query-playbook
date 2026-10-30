@@ -1,32 +1,38 @@
-# Render Blueprint: Defender Query Playbook as a static site.
+# Render Blueprint: Defender Query Playbook with the OSINT tab.
+# A free Node web service (server.mjs) serves the page and runs OSINT lookups with the API keys
+# set in Render's Environment settings (never in this repo). Free services sleep when idle;
+# the first visit after a while takes about a minute.
 # The library check runs on every deploy; a broken data/alerts.js stops the deploy.
 services:
   - type: web
-    name: defender-query-playbook
-    runtime: static
-    buildCommand: node scripts/validate.mjs && node scripts/build.mjs
-    staticPublishPath: ./dist
-    pullRequestPreviewsEnabled: false
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: no-referrer
-      - path: /*
-        name: Permissions-Policy
-        value: camera=(), microphone=(), geolocation=()
-      - path: /*
-        name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-      # Always fetch the latest alert library and page after a deploy.
-      - path: /data/*
-        name: Cache-Control
-        value: no-cache
-      - path: /
-        name: Cache-Control
-        value: no-cache
+    name: defender-query-playbook-app
+    runtime: node
+    plan: free
+    buildCommand: node scripts/validate.mjs
+    startCommand: node server.mjs
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: OSINT_CACHE_HOURS
+        value: "24"
+      - key: VIRUSTOTAL_RATE_PER_MIN
+        value: "4"
+      # Secrets: Render asks for these when the Blueprint is applied. Leave a key empty to turn that provider off.
+      - key: PLAYBOOK_ACCESS_CODE
+        sync: false
+      - key: ABUSEIPDB_API_KEY
+        sync: false
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: URLSCAN_API_KEY
+        sync: false
+      - key: SCREENSHOTBASE_API_KEY
+        sync: false
+      - key: SHODAN_API_KEY
+        sync: false
+      - key: OTX_API_KEY
+        sync: false
