@@ -27,6 +27,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "Look for sign-ins with no device name, an unmanaged or non-compliant device, <b>singleFactorAuthentication</b>, or a country the user has never used."
       },
       {
+        "ctx": "Sign-ins by country with the IPs used (baseline window, 30 days)",
+        "kql": "SigninLogs\n| where TimeGenerated >= ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| extend Country = tostring(LocationDetails.countryOrRegion)\n| summarize\n    SignInCount = count(),\n    IPs = make_set(IPAddress, 100)\nby Country\n| extend IPCount = array_length(IPs)\n| project Country, SignInCount, IPCount, IPs\n| order by SignInCount desc",
+        "read": "One row per country: how many successful sign-ins, how many IPs, and the IPs themselves. The user's home country should have most sign-ins. A country with only a few sign-ins from one or two IPs is the one to check: look those IPs up in the OSINT tab and compare the times with the full sign-in log in step 2."
+      },
+      {
         "ctx": "Check the user's successful sign-in logs excluding specific countries",
         "kql": "let ExcludedCountries = dynamic([{{XCOUNTRIES}}]);\nSigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| extend Country = tostring(LocationDetails.countryOrRegion)\n| where Country !in~ (ExcludedCountries)\n| project TimeGenerated, UserPrincipalName, AppDisplayName, IPAddress,\n          City = tostring(LocationDetails.city),\n          State = tostring(LocationDetails.state),\n          Country,\n          DeviceName = tostring(DeviceDetail.displayName),\n          OS = tostring(DeviceDetail.operatingSystem),\n          Browser = tostring(DeviceDetail.browser),\n          IsCompliant = tostring(DeviceDetail.isCompliant),\n          IsManaged = tostring(DeviceDetail.isManaged),\n          ClientAppUsed, AuthenticationRequirement,\n          ConditionalAccessStatus, RiskLevelDuringSignIn\n| order by TimeGenerated desc",
         "read": "Same as step 1, but sign-ins from the countries in <b>Exclude countries</b> (2-letter codes, e.g. HK, AU) are removed, so only unexpected locations are left. With Exclude countries empty, every sign-in is shown."
