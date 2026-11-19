@@ -1,4 +1,4 @@
-// Defender Query Playbook server: serves the page and runs OSINT lookups with server-held API keys.
+// SOC Triage Query Hub server: serves the page and runs OSINT lookups with server-held API keys.
 // Usage: node server.mjs [port]      (Node 18+, no dependencies)
 // Settings come from .env locally and from the host's environment settings on Render. See .env.example.
 import { createServer } from "node:http";
@@ -147,5 +147,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Defender Query Playbook on http://localhost:${PORT}  (OSINT ${ACCESS_CODE ? "on" : "off: set PLAYBOOK_ACCESS_CODE"})`);
+  console.log(`SOC Triage Query Hub on http://localhost:${PORT}  (OSINT ${ACCESS_CODE ? "on" : "off: set PLAYBOOK_ACCESS_CODE"})`);
 });

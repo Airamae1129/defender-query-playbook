@@ -1,11 +1,11 @@
-# Render Blueprint: Defender Query Playbook with the OSINT tab.
+# Render Blueprint: SOC Triage Query Hub with the OSINT tab.
 # A free Node web service (server.mjs) serves the page and runs OSINT lookups with the API keys
 # set in Render's Environment settings (never in this repo). Free services sleep when idle;
 # the first visit after a while takes about a minute.
 # The library check runs on every deploy; a broken data/alerts.js stops the deploy.
 services:
   - type: web
-    name: defender-query-playbook-app
+    name: soc-triage-query-hub
     runtime: node
     plan: free
     buildCommand: node scripts/validate.mjs

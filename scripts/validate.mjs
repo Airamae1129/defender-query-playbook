@@ -21,7 +21,7 @@ catch (e) { fail("data/alerts.js is not valid JSON after the assignment: " + e.m
 // Keep in sync with PARAMS in index.html.
 const TOKENS = new Set(["LOOKBACK","BASELINE","ALERTID","DEVICE","UPN","UPNS","ACCOUNT","IP","IPS","SHA1","SHA256","FILENAME","SENDER","DOMAIN","MSGID","GUEST","OBJECTID","ACTOR","APPID","COUNTRIES","XCOUNTRIES","INTIP","SESSIONID","TABLE","RESOURCE","ALERTNAME"]);
 const LIST_TOKENS = new Set(["UPNS","IPS","COUNTRIES","XCOUNTRIES"]);
-const CATS = new Set(["Endpoint","Identity","Email","Cloud apps","Network","SIEM health"]);
+const CATS = new Set(["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne"]);
 const SEVS = new Set(["high","medium","low","info"]);
 
 // Columns verified on Microsoft Learn, 9 Oct 2026. Extend when you add tables.

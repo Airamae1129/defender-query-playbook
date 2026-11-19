@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Defender Query Playbook</title>
+<title>SOC Triage Query Hub</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2.5 4.5 6.8v8.4c0 7.2 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.1 11.5-14.3V6.8z' fill='%232747C9'/%3E%3Cpath d='m10.5 16.2 3.6 3.6 7.4-7.6' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -14,7 +15,7 @@
   --accent:#2747C9; --accent-soft:#E3E8FB; --on-accent:#FFFFFF;
   --code-bg:#151A1E; --code-fg:#DCE3E6; --k-kw:#8FB4FF; --k-str:#E6C07B; --k-fn:#7FD6C2; --k-com:#7C8A92; --k-num:#F29E74; --k-tbl:#D7A6FF;
   --sev-high:#B42318; --sev-med:#B54708; --sev-low:#3F6B12; --sev-info:#445059;
-  --c-triage:#5A4FCF; --c-endpoint:#0E7C86; --c-identity:#A23E8C; --c-email:#B05A12; --c-cloud:#2F6FB3; --c-team:#3E7D2F; --c-network:#7A5C00; --c-siem:#5E6472;
+  --c-triage:#5A4FCF; --c-endpoint:#0E7C86; --c-identity:#A23E8C; --c-email:#B05A12; --c-cloud:#2F6FB3; --c-team:#3E7D2F; --c-network:#7A5C00; --c-siem:#5E6472; --c-sentinel:#0063B1; --c-cs:#C8102E; --c-splunk:#5C8F00; --c-s1:#6B2FBF;
   --warn-bg:#FFF4E0; --warn-fg:#7A4B00;
   --f-ui:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
@@ -25,14 +26,14 @@
   --accent:#8EA6FF; --accent-soft:#232C4D; --on-accent:#0D1330;
   --code-bg:#0B0F12; --code-fg:#D6DEE2;
   --sev-high:#FF8A7A; --sev-med:#F5B04F; --sev-low:#9BD36A; --sev-info:#A9B6BD;
-  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0;
+  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0; --c-sentinel:#6CB8F6; --c-cs:#FF7A8A; --c-splunk:#A6D86B; --c-s1:#B79AF2;
   --warn-bg:#3A2A10; --warn-fg:#F6CF8A; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#101417; --panel:#171C20; --sunk:#1E252A; --line:#2B343A; --fg:#E7ECEE; --muted:#97A3A9;
   --accent:#8EA6FF; --accent-soft:#232C4D; --on-accent:#0D1330;
   --code-bg:#0B0F12; --code-fg:#D6DEE2;
   --sev-high:#FF8A7A; --sev-med:#F5B04F; --sev-low:#9BD36A; --sev-info:#A9B6BD;
-  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0;
+  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0; --c-sentinel:#6CB8F6; --c-cs:#FF7A8A; --c-splunk:#A6D86B; --c-s1:#B79AF2;
   --warn-bg:#3A2A10; --warn-fg:#F6CF8A; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -161,7 +162,7 @@ footer.src{padding-block:8px 32px;color:var(--muted);font-size:.8rem;text-align:
 <style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
 <style>
 /* OSINT tab: Queries / OSINT view switch, access-code gate, indicator cards, results copy block. */
-.views{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--panel);padding:2px}
+.views{display:inline-flex;flex-wrap:wrap;max-width:100%;border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:2px;gap:2px}
 .views button{border:0;background:transparent;border-radius:999px;padding:5px 14px;font-weight:700;font-size:.86rem;cursor:pointer;color:var(--muted)}
 .views button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
 body.view-osint #q,body.view-osint .search,body.view-osint #addBtn,body.view-osint #filters,body.view-osint main.grid{display:none!important}
@@ -208,15 +209,34 @@ body.view-osint #q,body.view-osint .search,body.view-osint #addBtn,body.view-osi
 .copy-wrap .btn{background:transparent;color:var(--code-fg);border-color:#ffffff33}
 .lock{max-width:440px;margin:24px auto}
 </style>
+<style>
+/* Header brand: logo, name, owner badge and platform line. */
+header.top{background:linear-gradient(180deg,var(--accent-soft),var(--bg) 85%)}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand .logo{color:var(--accent);display:grid;place-items:center;flex:none;filter:drop-shadow(0 2px 6px color-mix(in srgb,var(--accent) 35%,transparent))}
+.brand-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.brand h1{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.015em}
+.brand .tag{font-family:var(--f-mono);font-size:.7rem;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.owner{font-size:.74rem;font-weight:700;color:var(--accent);background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:999px;padding:2px 10px;white-space:nowrap}
+.views button{transition:background .15s,color .15s}
+.views button:hover:not([aria-pressed="true"]){color:var(--fg);background:var(--sunk)}
+</style>
 </head>
 <body>
 
 <header class="top">
   <div class="wrap">
     <div class="top-row">
-      <div class="brand"><h1>Defender Query Playbook</h1><span class="tag">ALERT → CONTEXT → KQL</span></div>
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32" width="34" height="34"><path d="M16 2.5 4.5 6.8v8.4c0 7.2 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.1 11.5-14.3V6.8z" fill="currentColor"/><path d="m10.5 16.2 3.6 3.6 7.4-7.6" fill="none" stroke="var(--on-accent)" stroke-width="2.4" stroke-linecap="square"/></svg></span>
+        <div class="brand-text">
+          <div class="brand-line"><h1>SOC Triage Query Hub</h1><span class="owner" title="Project owner">Owner: Aira Mae Bugay</span></div>
+          <span class="tag">Defender · Sentinel · CrowdStrike · Splunk · SentinelOne · OSINT</span>
+        </div>
+      </div>
       <label class="search" for="q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search alert name, table, MITRE ID…" autocomplete="off"></label>
-      <div class="views" role="group" aria-label="View"><button type="button" data-view="queries" aria-pressed="true">Queries</button><button type="button" data-view="osint" aria-pressed="false">OSINT</button></div>
+      <div class="views" role="group" aria-label="Platform"><button type="button" data-view="Defender" aria-pressed="true">Defender</button><button type="button" data-view="Sentinel" aria-pressed="false">Sentinel</button><button type="button" data-view="CrowdStrike" aria-pressed="false">CrowdStrike</button><button type="button" data-view="Splunk" aria-pressed="false">Splunk</button><button type="button" data-view="SentinelOne" aria-pressed="false">SentinelOne</button><button type="button" data-view="osint" aria-pressed="false">OSINT</button></div>
       <button class="btn primary" id="addBtn" type="button">+ Add alert</button>
     </div>
     <div class="filters" id="filters" role="toolbar" aria-label="Filter by category"></div>
@@ -229,7 +249,7 @@ body.view-osint #q,body.view-osint .search,body.view-osint #addBtn,body.view-osi
     <section class="detail" id="detail" aria-live="polite"></section>
   </main>
   <section id="osint" hidden aria-label="OSINT"></section>
-  <footer class="src">Defender Query Playbook · Owner: Aira Mae Bugay · Test every query in your own tenant before relying on it.</footer>
+  <footer class="src">SOC Triage Query Hub · Owner: Aira Mae Bugay · Test every query in your own tenant before relying on it.</footer>
 </div>
 
 <script src="data/alerts.js"></script>
@@ -237,7 +257,7 @@ body.view-osint #q,body.view-osint .search,body.view-osint #addBtn,body.view-osi
 
 const CATS = {
   Endpoint:{c:"--c-endpoint"}, Identity:{c:"--c-identity"},
-  Email:{c:"--c-email"}, "Cloud apps":{c:"--c-cloud"}, Network:{c:"--c-network"}, "SIEM health":{c:"--c-siem"}, Team:{c:"--c-team"}
+  Email:{c:"--c-email"}, "Cloud apps":{c:"--c-cloud"}, Network:{c:"--c-network"}, "SIEM health":{c:"--c-siem"}, "Sentinel logs":{c:"--c-sentinel"}, CrowdStrike:{c:"--c-cs"}, Splunk:{c:"--c-splunk"}, SentinelOne:{c:"--c-s1"}, Team:{c:"--c-team"}
 };
 
 /* Fill-in fields. list:true -> comma-separated input rendered as "a", "b".
@@ -271,7 +291,7 @@ const PARAMS = {
   ALERTNAME:{label:"Alert name (exact title)", ph:"A potentially malicious web request…"}
 };
 
-const SENTINEL_TABLES = ["SigninLogs","AADNonInteractiveUserSignInLogs","AuditLogs","SecurityEvent","OfficeActivity","CommonSecurityLog","Syslog","Usage","ThreatIntelligenceIndicator","ThreatIntelIndicators","AzureActivity","Anomalies","AGWAccessLogs","AGWFirewallLogs","AzureDiagnostics","SecurityAlert","SentinelBehaviorInfo","AppDependencies","AppExceptions","AppTraces","AppRequests","AppMetrics","AppPerformanceCounters"];
+const SENTINEL_TABLES = ["SigninLogs","AADNonInteractiveUserSignInLogs","AuditLogs","SecurityEvent","OfficeActivity","CommonSecurityLog","Syslog","Heartbeat","DnsEvents","Event","SecurityIncident","Usage","ThreatIntelligenceIndicator","ThreatIntelIndicators","AzureActivity","Anomalies","AGWAccessLogs","AGWFirewallLogs","AzureDiagnostics","SecurityAlert","SentinelBehaviorInfo","AppDependencies","AppExceptions","AppTraces","AppRequests","AppMetrics","AppPerformanceCounters"];
 const XDR_TABLES = ["DeviceNetworkInfo","DeviceProcessEvents","DeviceNetworkEvents","DeviceFileEvents","DeviceRegistryEvents","DeviceLogonEvents","DeviceEvents","DeviceImageLoadEvents","DeviceInfo","AlertInfo","AlertEvidence","EntraIdSignInEvents","EntraIdSpnSignInEvents","AADSignInEventsBeta","IdentityLogonEvents","IdentityDirectoryEvents","IdentityQueryEvents","IdentityInfo","EmailEvents","EmailAttachmentInfo","EmailUrlInfo","EmailPostDeliveryEvents","UrlClickEvents","CloudAppEvents","OAuthAppInfo"];
 const ALL_TABLES = [...SENTINEL_TABLES, ...XDR_TABLES];
 
@@ -287,7 +307,7 @@ const store = {
 };
 function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),1800); }
 
-const state = { cat:"All", q:"", sel:null, team:[], values:{}, editing:null, db:null, user:null, uid:null, canWrite:null, names:{} };
+const state = { platform:"Defender", cat:"All", q:"", sel:null, team:[], values:{}, editing:null, db:null, user:null, uid:null, canWrite:null, names:{} };
 /* Entity values (users, IPs, devices…) live only in memory and are never saved, so
    nothing from an investigation is left in the browser. Wipe what older versions saved. */
 try{ localStorage.removeItem("dqp-values") }catch(e){}
@@ -467,15 +487,27 @@ function highlightFills(str){
 }
 
 /* ---------------- render: filters + list ---------------- */
+/* Platform tabs: Sentinel logs, CrowdStrike, Splunk and SentinelOne entries get their own tab; everything else is Defender. */
+const PLATFORM_OF = { "Sentinel logs":"Sentinel", CrowdStrike:"CrowdStrike", Splunk:"Splunk", SentinelOne:"SentinelOne" };
+const platformOf = e => e.team ? "Defender" : (PLATFORM_OF[e.cat] || "Defender");
+const inPlatform = e => platformOf(e) === state.platform;
+function setPlatform(p){
+  state.platform = p; state.cat = "All"; state.editing = null;
+  const first = allEntries().find(inPlatform);
+  if(!allEntries().some(e => e.id === state.sel && inPlatform(e))) state.sel = first ? first.id : null;
+  renderFilters(); renderList(); renderDetail();
+}
+window.setPlatform = setPlatform;
 function matches(e){
+  if(!inPlatform(e)) return false;
   if(state.cat !== "All" && (state.cat === "Team" ? !e.team : e.cat !== state.cat)) return false;
   if(!state.q) return true;
   const hay = [e.name, e.cat, e.src, e.summary, (e.mitre||[]).join(" "), e.steps.map(s=>s.ctx+" "+s.kql).join(" ")].join(" ").toLowerCase();
   return state.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
 }
 function renderFilters(){
-  const all = allEntries();
-  const cats = ["All","Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Team"];
+  const all = allEntries().filter(inPlatform);
+  const cats = ["All", ...["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne"].filter(c => all.some(e => !e.team && e.cat === c)), ...(state.platform === "Defender" ? ["Team"] : [])];
   $("#filters").innerHTML = cats.map(c => {
     const n = c==="All" ? all.length : c==="Team" ? state.team.length : all.filter(e=>e.cat===c).length;
     const cc = c==="All" ? "" : `style="--cc:var(${CATS[c].c})"`;
@@ -490,7 +522,7 @@ function renderList(){
   }
   const groups = {};
   items.forEach(e => (groups[e.team ? "Team" : e.cat] ||= []).push(e));
-  const order = ["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Team"];
+  const order = ["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne","Team"];
   $("#list").innerHTML = order.filter(g=>groups[g]).map(g =>
     `<div class="group-h">${g==="Team"?"Team added":g}</div>` + groups[g].map(e => {
       const cc = CATS[e.team ? "Team" : e.cat]?.c || "--muted";
@@ -584,7 +616,7 @@ function renderForm(){
         <div class="fld" style="grid-column:1/-1"><label for="f-name">Alert name</label><input id="f-name" value="${esc(f.name)}" placeholder="e.g. Suspicious inbox manipulation rule" required></div>
       </div>
       <div class="frow">
-        <div class="fld"><label for="f-cat">Category</label><select id="f-cat">${["Endpoint","Identity","Email","Cloud apps","Network","SIEM health"].map(c=>`<option ${f.cat===c?"selected":""}>${c}</option>`).join("")}</select></div>
+        <div class="fld"><label for="f-cat">Category</label><select id="f-cat">${["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne"].map(c=>`<option ${f.cat===c?"selected":""}>${c}</option>`).join("")}</select></div>
         <div class="fld"><label for="f-sev">Severity</label><select id="f-sev">${["high","medium","low","info"].map(c=>`<option value="${c}" ${f.sev===c?"selected":""}>${c[0].toUpperCase()+c.slice(1)}</option>`).join("")}</select></div>
         <div class="fld"><label for="f-src">Source product</label><input id="f-src" value="${esc(f.src)}" placeholder="Defender for Endpoint"></div>
         <div class="fld"><label for="f-mitre">MITRE IDs</label><input id="f-mitre" value="${esc(f.mitre)}" placeholder="T1110, T1078"></div>
@@ -1003,7 +1035,9 @@ document.addEventListener("submit", ev => {
 });
 
 async function setView(view){
+  if(view==="queries") view = "Defender";
   const osint = view==="osint";
+  if(!osint && window.setPlatform) window.setPlatform(view);
   document.body.classList.toggle("view-osint", osint);
   $("#osint").hidden = !osint;
   document.querySelectorAll(".views button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.view===view)));
@@ -1015,8 +1049,8 @@ async function setView(view){
   }
   render();
 }
-let startView = "queries"; try{ startView = sessionStorage.getItem("dqp-view") || "queries"; }catch(e){}
-if(startView==="osint") setView("osint");
+let startView = "Defender"; try{ startView = sessionStorage.getItem("dqp-view") || "Defender"; }catch(e){}
+if(startView!=="Defender") setView(startView);
 })();
 </script>
 

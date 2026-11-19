@@ -1,6 +1,6 @@
-# Defender Query Playbook
+# SOC Triage Query Hub
 
-Alert → Context → KQL. Pick a Defender alert, type in its entities, copy ready-to-run hunting queries.
+Pick an alert, type in its entities, copy ready-to-run hunting queries for Microsoft Defender XDR, Microsoft Sentinel, CrowdStrike Falcon, Splunk and SentinelOne, and check indicators in the OSINT tab. Each platform has its own tab.
 
 Owner: Aira Mae Bugay
 

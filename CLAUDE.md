@@ -1,4 +1,4 @@
-# Defender Query Playbook
+# SOC Triage Query Hub
 
 A static site that maps Microsoft Defender XDR / Sentinel alerts to step-by-step KQL investigation queries. Analysts pick an alert, type the alert's entities (user, IP, device, hash) into fill-in fields, and copy ready-to-run queries.
 
@@ -14,7 +14,7 @@ A static site that maps Microsoft Defender XDR / Sentinel alerts to step-by-step
 {
   "id": "kebab-case-unique-id",
   "name": "Alert title as it appears in Defender",
-  "cat": "Endpoint | Identity | Email | Cloud apps | Network | SIEM health",
+  "cat": "Endpoint | Identity | Email | Cloud apps | Network | SIEM health | Sentinel logs | CrowdStrike | Splunk | SentinelOne",
   "src": "Product that raises it, e.g. Defender for Endpoint",
   "sev": "high | medium | low | info",
   "mitre": ["T1110", "T1110.003"],
@@ -74,3 +74,5 @@ A copy of this site is published as a claude.ai artifact, where the "+ Add alert
 ## Non-KQL entries
 
 `ngfw-malicious-ip-auth` holds CrowdStrike Falcon Next-Gen SIEM (LogScale CQL) queries, not KQL. Fill-in tokens work the same, but CQL comparisons like `user.name="{{ACCOUNT}}"` take a single value only.
+
+The **CrowdStrike** (LogScale CQL), **Splunk** (SPL) and **SentinelOne** (PowerQuery) categories hold non-KQL queries. Use `earliest=-{{LOOKBACK}}` for Splunk time windows; CrowdStrike and SentinelOne take their time range from the console. Their `field="{{TOKEN}}"` comparisons take one value. **Sentinel logs** entries are per-table exploration queries (sample rows, schema, top events, daily volume, one entity).

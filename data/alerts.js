@@ -1,4 +1,4 @@
-// Defender Query Playbook: alert library.
+// SOC Triage Query Hub: alert library.
 // This file is plain JSON wrapped in one assignment so index.html can load it
 // when opened straight from disk (browsers block fetch() of local .json files).
 // Edit the JSON below; keep the first and last lines as they are.
@@ -1556,5 +1556,798 @@ window.PLAYBOOK_ALERTS = [
       }
     ],
     "fp": "Monitoring and backup tools that authenticate with NTLM to many servers, and legacy applications configured with an admin account."
+  },
+  {
+    "id": "sentinel-workspace-overview",
+    "name": "Sentinel workspace overview: which tables have data?",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Start here when you join a new client workspace: which log tables are populated, how much data each sends, which agents are reporting, and which alerts fire most.",
+    "steps": [
+      {
+        "ctx": "Which tables have data, and how much? (look-back window)",
+        "kql": "Usage\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize GB = round(sum(Quantity) / 1024, 3), Billable = max(IsBillable), LastSeen = max(TimeGenerated) by DataType\n| order by GB desc",
+        "read": "Every row is a table that received data. Missing expected tables (e.g. SecurityEvent, Syslog, CommonSecurityLog) means that source isn't connected. Use the table's own entry in this category to explore it."
+      },
+      {
+        "ctx": "Tables that stopped sending data (seen in the baseline, not in the last day)",
+        "kql": "Usage\n| where TimeGenerated > ago({{BASELINE}})\n| summarize LastSeen = max(TimeGenerated) by DataType\n| where LastSeen < ago(1d)\n| order by LastSeen asc",
+        "read": "Each row is a log source that went quiet. Check the connector, agent or forwarder before trusting any 'no results' from that table."
+      },
+      {
+        "ctx": "Most frequent alerts in the workspace (look-back window)",
+        "kql": "SecurityAlert\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Alerts = count(), Entities = dcount(CompromisedEntity), Last = max(TimeGenerated) by AlertName, ProviderName, AlertSeverity\n| order by Alerts desc\n| take 30",
+        "read": "The noisiest rules are tuning candidates; check whether their playbook entry exists here."
+      },
+      {
+        "ctx": "Open incidents by severity and owner",
+        "kql": "SecurityIncident\n| where TimeGenerated > ago({{BASELINE}})\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| where Status != \"Closed\"\n| project IncidentNumber, Title, Severity, Status, Owner = tostring(Owner.assignedTo), CreatedTime, LastModifiedTime\n| order by Severity asc, CreatedTime asc",
+        "read": "SecurityIncident keeps a row per update, so arg_max takes the latest state of each incident."
+      }
+    ],
+    "fp": "Reference entry for exploring a workspace, not an alert."
+  },
+  {
+    "id": "sentinel-signinlogs",
+    "name": "Sentinel log sample: SigninLogs (Entra ID interactive sign-ins)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Interactive Entra ID sign-ins (user typed a password, used MFA, etc.). The main table for identity investigations.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest SigninLogs events (look-back window)",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, UserPrincipalName, AppDisplayName, IPAddress, ResultType, ResultDescription, Country = tostring(LocationDetails.countryOrRegion), ClientAppUsed, ConditionalAccessStatus, AuthenticationRequirement",
+        "read": "Shows what a SigninLogs record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in SigninLogs (schema)",
+        "kql": "SigninLogs\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in SigninLogs (look-back window)",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by ResultType, ResultDescription\n| order by Events desc\n| take 25",
+        "read": "ResultType 0 is success. 50126 bad password, 50053 locked or malicious IP, 50074/50076 routine MFA prompts, 53003 blocked by Conditional Access."
+      },
+      {
+        "ctx": "Daily volume of SigninLogs (baseline window): gaps or spikes?",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "All sign-ins for one user (look-back window)",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| project TimeGenerated, AppDisplayName, IPAddress, ResultType, ResultDescription, Country = tostring(LocationDetails.countryOrRegion), City = tostring(LocationDetails.city), ClientAppUsed, AuthenticationRequirement, ConditionalAccessStatus\n| order by TimeGenerated desc",
+        "read": "Put the user in User (UPN). Look for failures followed by a success, new countries, or legacy ClientAppUsed values (IMAP, POP, SMTP)."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-aadnoninteractiveusersigninlogs",
+    "name": "Sentinel log sample: AADNonInteractiveUserSignInLogs (token refreshes)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Sign-ins the user didn't type: apps and mail clients refreshing tokens. Very high volume; key for token-theft and mailbox-access questions.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest AADNonInteractiveUserSignInLogs events (look-back window)",
+        "kql": "AADNonInteractiveUserSignInLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, UserPrincipalName, AppDisplayName, IPAddress, ResultType, Country = tostring(parse_json(LocationDetails).countryOrRegion), ClientAppUsed, UserAgent",
+        "read": "Shows what a AADNonInteractiveUserSignInLogs record looks like in this workspace. No rows means the connector isn't sending data (check the volume step). LocationDetails is a string here, so use parse_json() before reading fields."
+      },
+      {
+        "ctx": "Columns in AADNonInteractiveUserSignInLogs (schema)",
+        "kql": "AADNonInteractiveUserSignInLogs\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in AADNonInteractiveUserSignInLogs (look-back window)",
+        "kql": "AADNonInteractiveUserSignInLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by AppDisplayName, ResultType\n| order by Events desc\n| take 25",
+        "read": "The most common event types are usually routine. Rare types near the bottom are often the interesting ones."
+      },
+      {
+        "ctx": "Daily volume of AADNonInteractiveUserSignInLogs (baseline window): gaps or spikes?",
+        "kql": "AADNonInteractiveUserSignInLogs\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Non-interactive sign-ins for one user, grouped by IP (look-back window)",
+        "kql": "AADNonInteractiveUserSignInLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| summarize Events = count(), Apps = make_set(AppDisplayName, 10), First = min(TimeGenerated), Last = max(TimeGenerated) by IPAddress, Country = tostring(parse_json(LocationDetails).countryOrRegion)\n| order by Last desc",
+        "read": "An IP or country the user never uses interactively, refreshing tokens for mail apps, can mean a stolen token."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-auditlogs",
+    "name": "Sentinel log sample: AuditLogs (Entra ID directory changes)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Entra ID directory changes: users, groups, roles, apps, MFA methods, Conditional Access policies.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest AuditLogs events (look-back window)",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, OperationName, Category, Result, Initiator = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)), Target = tostring(TargetResources[0].displayName), LoggedByService",
+        "read": "Shows what a AuditLogs record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in AuditLogs (schema)",
+        "kql": "AuditLogs\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in AuditLogs (look-back window)",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by OperationName, Category\n| order by Events desc\n| take 25",
+        "read": "Routine: 'Update user', group membership by sync. Worth a look: role assignments, new MFA methods, consent to apps, Conditional Access changes."
+      },
+      {
+        "ctx": "Daily volume of AuditLogs (baseline window): gaps or spikes?",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Changes made by or to one user (look-back window)",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where tostring(InitiatedBy) has \"{{UPN}}\" or tostring(TargetResources) has \"{{UPN}}\"\n| project TimeGenerated, OperationName, Result, Initiator = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)), Target = tostring(TargetResources[0].userPrincipalName), TargetName = tostring(TargetResources[0].displayName)\n| order by TimeGenerated desc",
+        "read": "Put the user in User (UPN). New authentication methods or roles right after an unusual sign-in suggest account takeover."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-securityevent",
+    "name": "Sentinel log sample: SecurityEvent (Windows Security events)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Windows Security event log from servers and workstations (logons, process creation, account changes) via the AMA / legacy agent.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest SecurityEvent events (look-back window)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, Computer, EventID, Activity, Account, TargetUserName, LogonType, IpAddress, WorkstationName",
+        "read": "Shows what a SecurityEvent record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in SecurityEvent (schema)",
+        "kql": "SecurityEvent\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in SecurityEvent (look-back window)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by EventID, Activity\n| order by Events desc\n| take 25",
+        "read": "Common IDs: 4624 logon, 4625 failed logon, 4688 process created, 4720 user created, 4728/4732/4756 added to group, 4740 locked out, 1102 log cleared."
+      },
+      {
+        "ctx": "Daily volume of SecurityEvent (baseline window): gaps or spikes?",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Security events for one host (look-back window)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Computer startswith \"{{DEVICE}}\"\n| summarize Events = count(), Accounts = make_set(TargetUserName, 20), First = min(TimeGenerated), Last = max(TimeGenerated) by EventID, Activity\n| order by Events desc",
+        "read": "Put the host in Device name. 1102 (log cleared), 4720 or group additions on a server are high priority."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-syslog",
+    "name": "Sentinel log sample: Syslog (Linux hosts)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Linux syslog: SSH and sudo (auth / authpriv), cron, kernel and daemon messages.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest Syslog events (look-back window)",
+        "kql": "Syslog\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, Computer, HostIP, Facility, SeverityLevel, ProcessName, SyslogMessage",
+        "read": "Shows what a Syslog record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in Syslog (schema)",
+        "kql": "Syslog\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in Syslog (look-back window)",
+        "kql": "Syslog\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by Facility, ProcessName\n| order by Events desc\n| take 25",
+        "read": "auth/authpriv with sshd or sudo are the security-relevant messages; see the SSH brute-force entry for detailed queries."
+      },
+      {
+        "ctx": "Daily volume of Syslog (baseline window): gaps or spikes?",
+        "kql": "Syslog\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Syslog messages for one host (look-back window)",
+        "kql": "Syslog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Computer startswith \"{{DEVICE}}\"\n| summarize Events = count(), Sample = take_any(SyslogMessage), Last = max(TimeGenerated) by Facility, ProcessName\n| order by Events desc",
+        "read": "Put the Linux host in Device name."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-commonsecuritylog",
+    "name": "Sentinel log sample: CommonSecurityLog (firewalls / proxies via CEF)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Firewall, proxy and network appliance logs in CEF format (Fortinet, Palo Alto, Check Point, etc.).",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest CommonSecurityLog events (look-back window)",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, DeviceVendor, DeviceProduct, Activity, SourceIP, DestinationIP, DestinationPort, ApplicationProtocol, DeviceAction, SentBytes, ReceivedBytes",
+        "read": "Shows what a CommonSecurityLog record looks like in this workspace. No rows means the connector isn't sending data (check the volume step). Vendor-specific fields often sit in AdditionalExtensions as key=value pairs; extract() them."
+      },
+      {
+        "ctx": "Columns in CommonSecurityLog (schema)",
+        "kql": "CommonSecurityLog\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in CommonSecurityLog (look-back window)",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by DeviceVendor, DeviceProduct, DeviceAction\n| order by Events desc\n| take 25",
+        "read": "The most common event types are usually routine. Rare types near the bottom are often the interesting ones."
+      },
+      {
+        "ctx": "Daily volume of CommonSecurityLog (baseline window): gaps or spikes?",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Firewall sessions for one IP, either direction (look-back window)",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where SourceIP == \"{{IP}}\" or DestinationIP == \"{{IP}}\"\n| summarize Sessions = count(), BytesOut = sum(SentBytes), BytesIn = sum(ReceivedBytes), Ports = make_set(DestinationPort, 20), Actions = make_set(DeviceAction, 5), First = min(TimeGenerated), Last = max(TimeGenerated) by SourceIP, DestinationIP, DeviceProduct\n| order by Sessions desc",
+        "read": "Put the IP in IP address. Large BytesOut from an internal host to one external IP is the exfiltration pattern."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-officeactivity",
+    "name": "Sentinel log sample: OfficeActivity (Exchange, SharePoint, OneDrive, Teams)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Microsoft 365 audit: mailbox actions, inbox rules, file access and sharing, Teams.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest OfficeActivity events (look-back window)",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, OfficeWorkload, RecordType, Operation, UserId, ClientIP, OfficeObjectId",
+        "read": "Shows what a OfficeActivity record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in OfficeActivity (schema)",
+        "kql": "OfficeActivity\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in OfficeActivity (look-back window)",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by OfficeWorkload, Operation\n| order by Events desc\n| take 25",
+        "read": "High-value operations: New-InboxRule / Set-InboxRule / UpdateInboxRules, Set-Mailbox (forwarding), Add-MailboxPermission, FileDownloaded at volume, AnonymousLinkCreated."
+      },
+      {
+        "ctx": "Daily volume of OfficeActivity (baseline window): gaps or spikes?",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Microsoft 365 activity for one user (look-back window)",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserId =~ \"{{UPN}}\"\n| summarize Events = count(), IPs = make_set(ClientIP, 10), First = min(TimeGenerated), Last = max(TimeGenerated) by OfficeWorkload, Operation\n| order by Events desc",
+        "read": "Put the user in User (UPN). For inbox rules and forwarding detail, use the mailbox and account audit entry."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-azureactivity",
+    "name": "Sentinel log sample: AzureActivity (Azure subscription operations)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Azure control-plane operations: who created, changed or deleted resources, role assignments and policies.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest AzureActivity events (look-back window)",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, OperationNameValue, ActivityStatusValue, Caller, CallerIpAddress, ResourceGroup, _ResourceId",
+        "read": "Shows what a AzureActivity record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in AzureActivity (schema)",
+        "kql": "AzureActivity\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in AzureActivity (look-back window)",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by OperationNameValue, ActivityStatusValue\n| order by Events desc\n| take 25",
+        "read": "Watch for ROLEASSIGNMENTS/WRITE, deletes (…/DELETE), key vault access policy changes and diagnostic settings being removed."
+      },
+      {
+        "ctx": "Daily volume of AzureActivity (baseline window): gaps or spikes?",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Azure operations by one caller (look-back window)",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Caller =~ \"{{UPN}}\"\n| summarize Operations = count(), IPs = make_set(CallerIpAddress, 10), First = min(TimeGenerated), Last = max(TimeGenerated) by OperationNameValue, ActivityStatusValue\n| order by Operations desc",
+        "read": "Put the user (Caller UPN) in User (UPN)."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-securityalert",
+    "name": "Sentinel log sample: SecurityAlert (alerts from all products)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Every alert raised by Sentinel analytics rules and connected Microsoft security products.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest SecurityAlert events (look-back window)",
+        "kql": "SecurityAlert\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, AlertName, AlertSeverity, ProviderName, ProductName, CompromisedEntity, Status, SystemAlertId",
+        "read": "Shows what a SecurityAlert record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in SecurityAlert (schema)",
+        "kql": "SecurityAlert\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in SecurityAlert (look-back window)",
+        "kql": "SecurityAlert\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by AlertName, ProviderName\n| order by Events desc\n| take 25",
+        "read": "The most common event types are usually routine. Rare types near the bottom are often the interesting ones."
+      },
+      {
+        "ctx": "Daily volume of SecurityAlert (baseline window): gaps or spikes?",
+        "kql": "SecurityAlert\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Alerts that mention one entity (user, host or IP) (look-back window)",
+        "kql": "SecurityAlert\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Entities has_any (\"{{UPN}}\", \"{{DEVICE}}\", \"{{IP}}\") or CompromisedEntity has_any (\"{{UPN}}\", \"{{DEVICE}}\")\n| project TimeGenerated, AlertName, AlertSeverity, ProviderName, CompromisedEntity, Status, SystemAlertId\n| order by TimeGenerated desc",
+        "read": "Fill in any of User (UPN), Device name or IP address; fields you leave empty simply match nothing. Several alerts on the same entity in a short time point to a real incident."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-heartbeat",
+    "name": "Sentinel log sample: Heartbeat (agent health)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "One row per minute from every connected agent. Use it to confirm a host is reporting before trusting 'no results'.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest Heartbeat events (look-back window)",
+        "kql": "Heartbeat\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, Computer, OSType, Category, Version, ComputerIP",
+        "read": "Shows what a Heartbeat record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in Heartbeat (schema)",
+        "kql": "Heartbeat\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in Heartbeat (look-back window)",
+        "kql": "Heartbeat\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by OSType, Category\n| order by Events desc\n| take 25",
+        "read": "Category shows the agent type (Azure Monitor Agent, Direct Agent, SCOM)."
+      },
+      {
+        "ctx": "Daily volume of Heartbeat (baseline window): gaps or spikes?",
+        "kql": "Heartbeat\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Last heartbeat per host: which agents went silent?",
+        "kql": "Heartbeat\n| where TimeGenerated > ago({{BASELINE}})\n| summarize LastHeartbeat = max(TimeGenerated) by Computer, OSType, ComputerIP\n| extend SilentHours = datetime_diff(\"hour\", now(), LastHeartbeat)\n| where SilentHours >= 1\n| order by SilentHours desc",
+        "read": "Each row is a host that stopped reporting in the last hour or more. A silent host during an incident may be off, isolated, or tampered with."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-dnsevents",
+    "name": "Sentinel log sample: DnsEvents (Windows DNS server)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "DNS queries and answers from Windows DNS servers (DNS connector / AMA). Useful for C2 domains and DNS tunnelling.",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest DnsEvents events (look-back window)",
+        "kql": "DnsEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, Computer, ClientIP, Name, QueryType, IPAddresses, ResultCode",
+        "read": "Shows what a DnsEvents record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in DnsEvents (schema)",
+        "kql": "DnsEvents\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in DnsEvents (look-back window)",
+        "kql": "DnsEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by QueryType, ResultCode\n| order by Events desc\n| take 25",
+        "read": "Lots of TXT queries or NXDOMAIN (ResultCode 3) answers to long random subdomains suggests DNS tunnelling or DGA malware."
+      },
+      {
+        "ctx": "Daily volume of DnsEvents (baseline window): gaps or spikes?",
+        "kql": "DnsEvents\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Who queried a domain? (look-back window)",
+        "kql": "DnsEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Name has \"{{DOMAIN}}\"\n| summarize Queries = count(), Names = make_set(Name, 20), Answers = make_set(IPAddresses, 10), First = min(TimeGenerated), Last = max(TimeGenerated) by ClientIP\n| order by Queries desc",
+        "read": "Put the domain in Domain / URL fragment. ClientIP is the internal host that asked; map it to a device in Defender."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "sentinel-event",
+    "name": "Sentinel log sample: Event (Windows non-security logs)",
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Windows System, Application and other channels collected by the agent (services, PowerShell, Defender operational logs if collected).",
+    "steps": [
+      {
+        "ctx": "Sample rows: the latest Event events (look-back window)",
+        "kql": "Event\n| where TimeGenerated > ago({{LOOKBACK}})\n| top 20 by TimeGenerated desc\n| project TimeGenerated, Computer, EventLog, Source, EventID, EventLevelName, RenderedDescription",
+        "read": "Shows what a Event record looks like in this workspace. No rows means the connector isn't sending data (check the volume step)."
+      },
+      {
+        "ctx": "Columns in Event (schema)",
+        "kql": "Event\n| getschema\n| project ColumnName, ColumnType",
+        "read": "Lists every column and its type. Use it before writing a new query so column names are exact; dynamic columns (e.g. JSON details) need tostring() or parse_json()."
+      },
+      {
+        "ctx": "Top event types in Event (look-back window)",
+        "kql": "Event\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Events = count() by EventLog, Source, EventID\n| order by Events desc\n| take 25",
+        "read": "Useful IDs: 7045 new service installed (System), 4104 PowerShell script block (if collected), 1116/1117 Defender detections."
+      },
+      {
+        "ctx": "Daily volume of Event (baseline window): gaps or spikes?",
+        "kql": "Event\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Events = count() by Day = bin(TimeGenerated, 1d)\n| order by Day asc",
+        "read": "A day with zero or far fewer events means the source stopped logging (connector, agent or firewall problem). A sudden spike may be an attack, a misconfiguration, or a new data source."
+      },
+      {
+        "ctx": "Windows events for one host (look-back window)",
+        "kql": "Event\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Computer startswith \"{{DEVICE}}\"\n| summarize Events = count(), Sample = take_any(substring(RenderedDescription, 0, 200)), Last = max(TimeGenerated) by EventLog, Source, EventID\n| order by Events desc",
+        "read": "Put the host in Device name. A new service (7045) with a random name or a path in Temp/ProgramData is suspicious."
+      }
+    ],
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+  },
+  {
+    "id": "cs-host-activity",
+    "name": "CrowdStrike: host activity (processes, network, DNS, files)",
+    "cat": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "info",
+    "mitre": [
+      "T1059",
+      "T1071"
+    ],
+    "playbook": true,
+    "summary": "Everything Falcon recorded on one host: process starts, outbound connections, DNS lookups and new executables. Start here for any endpoint detection.",
+    "steps": [
+      {
+        "ctx": "Processes started on the host (command line, parent, user, hash)",
+        "kql": "#event_simpleName=ProcessRollup2 ComputerName=\"{{DEVICE}}\"\n| table([@timestamp, UserName, FileName, CommandLine, ParentBaseFileName, SHA256HashData], limit=500)\n| sort(@timestamp, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Fields like ComputerName take one value. Script hosts (powershell, cmd, wscript, mshta, rundll32) with encoded or download command lines need a closer look."
+      },
+      {
+        "ctx": "Outbound network connections from the host",
+        "kql": "#event_simpleName=NetworkConnectIP4 ComputerName=\"{{DEVICE}}\"\n| groupBy([RemoteAddressIP4, RemotePort], function=[count(), min(@timestamp, as=First), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "Rare external IPs and unusual ports (4444, 8080 to a VPS, etc.) are the ones to check in OSINT."
+      },
+      {
+        "ctx": "DNS lookups from the host",
+        "kql": "#event_simpleName=DnsRequest ComputerName=\"{{DEVICE}}\"\n| groupBy([DomainName], function=[count(), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "Newly registered or random-looking domains, and very long subdomains (DNS tunnelling), stand out."
+      },
+      {
+        "ctx": "New executables written to disk",
+        "kql": "#event_simpleName=NewExecutableWritten ComputerName=\"{{DEVICE}}\"\n| table([@timestamp, TargetFileName, ContextBaseFileName, SHA256HashData])\n| sort(@timestamp, order=desc)",
+        "read": "Executables dropped into Temp, ProgramData, Public or AppData by a browser, Office or script host are suspicious."
+      },
+      {
+        "ctx": "User logons on the host (success and failure)",
+        "kql": "#event_simpleName=/^UserLogon/ ComputerName=\"{{DEVICE}}\"\n| groupBy([#event_simpleName, UserName, LogonType], function=[count(), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "UserLogonFailed2 bursts followed by UserLogon for the same account is a brute-force success. LogonType 10 is RDP."
+      }
+    ],
+    "fp": "Software updaters and IT management agents start many processes and connections; compare with other hosts in the same role."
+  },
+  {
+    "id": "cs-ioc-hunt",
+    "name": "CrowdStrike: hunt an IoC across all hosts (hash, IP, domain)",
+    "cat": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Find every host that ran a file, talked to an IP, or looked up a domain from an alert or threat-intel report.",
+    "steps": [
+      {
+        "ctx": "Which hosts ran this file (SHA-256)?",
+        "kql": "#event_simpleName=ProcessRollup2 SHA256HashData=\"{{SHA256}}\"\n| groupBy([ComputerName, UserName, FileName], function=[count(), min(@timestamp, as=First), max(@timestamp, as=Last)])",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Fields like ComputerName take one value."
+      },
+      {
+        "ctx": "Which hosts connected to this IP?",
+        "kql": "#event_simpleName=NetworkConnectIP4 RemoteAddressIP4=\"{{IP}}\"\n| groupBy([ComputerName, RemotePort], function=[count(), min(@timestamp, as=First), max(@timestamp, as=Last)])",
+        "read": "Several hosts talking to the same external IP widens the incident."
+      },
+      {
+        "ctx": "Which hosts looked up this domain?",
+        "kql": "#event_simpleName=DnsRequest DomainName=*{{DOMAIN}}*\n| groupBy([ComputerName, DomainName], function=[count(), min(@timestamp, as=First), max(@timestamp, as=Last)])",
+        "read": "Matches the domain and its subdomains. Put the domain in Domain / URL fragment."
+      }
+    ],
+    "fp": "Shared infrastructure (CDNs, cloud providers) appears on many hosts; check the IP owner in OSINT first."
+  },
+  {
+    "id": "cs-detections",
+    "name": "CrowdStrike: detections and alerts overview",
+    "cat": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Which detections fired, on which hosts, and how often, to triage the queue and spot repeat offenders.",
+    "steps": [
+      {
+        "ctx": "Detections by name and severity",
+        "kql": "#event_simpleName=DetectionSummaryEvent OR #event_simpleName=EppDetectionSummaryEvent\n| groupBy([DetectName, Severity], function=[count(), count(ComputerName, distinct=true, as=Hosts), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Fields like ComputerName take one value. Event names vary by Falcon version; if nothing returns, search #event_simpleName=*Detection* to find yours."
+      },
+      {
+        "ctx": "Detections on one host",
+        "kql": "(#event_simpleName=DetectionSummaryEvent OR #event_simpleName=EppDetectionSummaryEvent) ComputerName=\"{{DEVICE}}\"\n| table([@timestamp, DetectName, Severity, FileName, CommandLine, UserName])\n| sort(@timestamp, order=desc)",
+        "read": "Several different detections on one host in a short time usually means a real intrusion rather than one noisy rule."
+      }
+    ],
+    "fp": "Reference entry, not an alert."
+  },
+  {
+    "id": "splunk-data-overview",
+    "name": "Splunk: what data is in this Splunk? (indexes, sourcetypes, hosts)",
+    "cat": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Start here on a new Splunk: which indexes and sourcetypes have data, how much, and which hosts stopped sending.",
+    "steps": [
+      {
+        "ctx": "Event counts by index and sourcetype (fast, using tstats)",
+        "kql": "| tstats count where index=* earliest=-{{LOOKBACK}} by index, sourcetype\n| sort - count",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Fields like host take one value. Use these index and sourcetype names in the other Splunk entries."
+      },
+      {
+        "ctx": "Hosts that stopped sending data",
+        "kql": "| tstats latest(_time) as last_seen where index=* earliest=-{{BASELINE}} by host, index\n| eval hours_silent=round((now()-last_seen)/3600,1)\n| where hours_silent > 2\n| convert ctime(last_seen)\n| sort - hours_silent",
+        "read": "A host that went quiet may be off, isolated, or have its forwarder stopped by an attacker."
+      }
+    ],
+    "fp": "Reference entry, not an alert."
+  },
+  {
+    "id": "splunk-windows-auth",
+    "name": "Splunk: Windows logons (failed and successful)",
+    "cat": "Splunk",
+    "src": "Splunk (SPL) – WinEventLog:Security",
+    "sev": "info",
+    "mitre": [
+      "T1110",
+      "T1078"
+    ],
+    "playbook": true,
+    "summary": "Brute force and suspicious logons from Windows Security events (4624 / 4625).",
+    "steps": [
+      {
+        "ctx": "Failed logons by account and source (brute force?)",
+        "kql": "index=* sourcetype=\"WinEventLog:Security\" EventCode=4625 earliest=-{{LOOKBACK}}\n| stats count as failures, dc(Workstation_Name) as workstations, values(Source_Network_Address) as sources by Account_Name, host\n| where failures > 10\n| sort - failures",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Fields like host take one value. Many failures from one source against many accounts is password spraying; against one account, brute force."
+      },
+      {
+        "ctx": "Successful logons for one account",
+        "kql": "index=* sourcetype=\"WinEventLog:Security\" EventCode=4624 Account_Name=\"{{ACCOUNT}}\" earliest=-{{LOOKBACK}}\n| stats count, values(Logon_Type) as logon_types, values(Source_Network_Address) as sources, latest(_time) as last by host\n| convert ctime(last)\n| sort - count",
+        "read": "Put the account in Account name. Logon type 10 is RDP, 3 network. A success from a source that also had many failures means the brute force worked."
+      }
+    ],
+    "fp": "Service accounts with expired passwords produce constant 4625s; check the account owner."
+  },
+  {
+    "id": "splunk-process",
+    "name": "Splunk: process creation (Sysmon 1 / Windows 4688)",
+    "cat": "Splunk",
+    "src": "Splunk (SPL) – Sysmon / WinEventLog",
+    "sev": "info",
+    "mitre": [
+      "T1059",
+      "T1105"
+    ],
+    "playbook": true,
+    "summary": "What ran on a host, with command lines and parents, plus a hunt for common living-off-the-land abuse.",
+    "steps": [
+      {
+        "ctx": "Processes on one host (Sysmon EventCode 1)",
+        "kql": "index=* sourcetype=\"XmlWinEventLog:Microsoft-Windows-Sysmon/Operational\" EventCode=1 host=\"{{DEVICE}}\" earliest=-{{LOOKBACK}}\n| table _time, User, ParentImage, Image, CommandLine, Hashes\n| sort - _time",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Fields like host take one value. Without Sysmon, use sourcetype=\"WinEventLog:Security\" EventCode=4688 and the New_Process_Name / Process_Command_Line fields."
+      },
+      {
+        "ctx": "Living-off-the-land binaries downloading or running code (all hosts)",
+        "kql": "index=* (sourcetype=\"XmlWinEventLog:Microsoft-Windows-Sysmon/Operational\" EventCode=1) earliest=-{{LOOKBACK}}\n  (Image=\"*\\\\certutil.exe\" CommandLine=\"*urlcache*\") OR (Image=\"*\\\\powershell.exe\" (CommandLine=\"*-enc*\" OR CommandLine=\"*DownloadString*\" OR CommandLine=\"*IEX*\")) OR (Image=\"*\\\\mshta.exe\") OR (Image=\"*\\\\rundll32.exe\" CommandLine=\"*http*\")\n| stats count, values(CommandLine) as commands by host, User, Image\n| sort - count",
+        "read": "Each row is a host and user that used a built-in Windows tool in a way attackers often do. Check the parent process and decode -enc strings."
+      }
+    ],
+    "fp": "IT scripts and software installers use PowerShell and certutil legitimately; compare with known admin accounts."
+  },
+  {
+    "id": "splunk-network",
+    "name": "Splunk: firewall / network traffic for an IP",
+    "cat": "Splunk",
+    "src": "Splunk (SPL) – CIM Network_Traffic",
+    "sev": "info",
+    "mitre": [
+      "T1071",
+      "T1041"
+    ],
+    "playbook": true,
+    "summary": "Who talked to an IP, on which ports, and how much data moved, using the CIM Network_Traffic data model.",
+    "steps": [
+      {
+        "ctx": "Sessions to or from the IP (CIM data model)",
+        "kql": "| tstats count, sum(All_Traffic.bytes_out) as bytes_out, sum(All_Traffic.bytes_in) as bytes_in, values(All_Traffic.dest_port) as ports, values(All_Traffic.action) as actions\n  from datamodel=Network_Traffic where (All_Traffic.src_ip=\"{{IP}}\" OR All_Traffic.dest_ip=\"{{IP}}\") earliest=-{{LOOKBACK}}\n  by All_Traffic.src_ip, All_Traffic.dest_ip\n| sort - bytes_out",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Fields like host take one value. Needs the Network_Traffic data model (accelerated in Enterprise Security). Large bytes_out to one external IP is the exfiltration pattern."
+      },
+      {
+        "ctx": "Raw firewall events for the IP (no data model)",
+        "kql": "index=* (\"{{IP}}\") earliest=-{{LOOKBACK}} (sourcetype=*firewall* OR sourcetype=pan:traffic OR sourcetype=fortigate_traffic OR sourcetype=cisco:asa)\n| stats count, values(action) as actions, values(dest_port) as ports by src_ip, dest_ip, sourcetype\n| sort - count",
+        "read": "Use when the data model isn't set up. Adjust the sourcetypes to your firewall."
+      }
+    ],
+    "fp": "Reference entry; CDN and cloud IPs show up everywhere, so check the owner in OSINT first."
+  },
+  {
+    "id": "splunk-linux-ssh",
+    "name": "Splunk: Linux SSH logons (brute force and success)",
+    "cat": "Splunk",
+    "src": "Splunk (SPL) – linux_secure",
+    "sev": "info",
+    "mitre": [
+      "T1110",
+      "T1021.004"
+    ],
+    "playbook": true,
+    "summary": "SSH failures and successes from /var/log/secure or auth.log (sourcetype linux_secure).",
+    "steps": [
+      {
+        "ctx": "Failed SSH logins by source IP and user",
+        "kql": "index=* sourcetype=linux_secure \"Failed password\" earliest=-{{LOOKBACK}}\n| rex \"Failed password for (invalid user )?(?<user>\\S+) from (?<src_ip>\\d+\\.\\d+\\.\\d+\\.\\d+)\"\n| stats count as failures, dc(user) as users by src_ip, host\n| sort - failures",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Fields like host take one value."
+      },
+      {
+        "ctx": "Successful SSH logins (did any attacker get in?)",
+        "kql": "index=* sourcetype=linux_secure \"Accepted\" earliest=-{{LOOKBACK}}\n| rex \"Accepted (?<method>\\S+) for (?<user>\\S+) from (?<src_ip>\\d+\\.\\d+\\.\\d+\\.\\d+)\"\n| stats count, latest(_time) as last by host, user, src_ip, method\n| convert ctime(last)\n| sort - count",
+        "read": "Any Accepted row from an IP that also had many failures means the brute force succeeded."
+      }
+    ],
+    "fp": "Internet-facing SSH gets constant scanning; failures alone are usually noise."
+  },
+  {
+    "id": "s1-host-activity",
+    "name": "SentinelOne: host activity (processes, network, DNS, files)",
+    "cat": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "info",
+    "mitre": [
+      "T1059",
+      "T1071"
+    ],
+    "playbook": true,
+    "summary": "Everything SentinelOne recorded on one endpoint: process starts, network connections, DNS and file creation.",
+    "steps": [
+      {
+        "ctx": "Processes started on the endpoint",
+        "kql": "endpoint.name = '{{DEVICE}}' event.type = 'Process Creation'\n| columns event.time, src.process.user, src.process.parent.name, src.process.name, tgt.process.name, tgt.process.cmdline, tgt.process.image.sha256\n| sort -event.time\n| limit 500",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Fields like endpoint.name take one value. Script hosts with encoded or download command lines need a closer look."
+      },
+      {
+        "ctx": "Network connections from the endpoint",
+        "kql": "endpoint.name = '{{DEVICE}}' event.category = 'ip'\n| group connections = count(), last = max(event.time) by dst.ip.address, dst.port.number, src.process.name\n| sort -connections\n| limit 200",
+        "read": "Rare external IPs from script hosts or unsigned binaries are the ones to check in OSINT."
+      },
+      {
+        "ctx": "DNS lookups from the endpoint",
+        "kql": "endpoint.name = '{{DEVICE}}' event.category = 'dns'\n| group lookups = count(), last = max(event.time) by event.dns.request, src.process.name\n| sort -lookups\n| limit 200",
+        "read": "Newly registered or random-looking domains stand out."
+      },
+      {
+        "ctx": "Files created in user-writable folders",
+        "kql": "endpoint.name = '{{DEVICE}}' event.type = 'File Creation' (tgt.file.path contains 'AppData' or tgt.file.path contains 'Temp' or tgt.file.path contains 'ProgramData' or tgt.file.path contains 'Public')\n| columns event.time, src.process.name, tgt.file.path, tgt.file.sha256\n| sort -event.time\n| limit 300",
+        "read": "Executables or scripts dropped by browsers, Office or script hosts are suspicious."
+      }
+    ],
+    "fp": "Updaters and management agents create files and connections constantly; compare with peer endpoints."
+  },
+  {
+    "id": "s1-ioc-hunt",
+    "name": "SentinelOne: hunt an IoC across all endpoints (hash, IP, domain)",
+    "cat": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Find every endpoint that ran a file, connected to an IP or looked up a domain.",
+    "steps": [
+      {
+        "ctx": "Which endpoints ran this file (SHA-256)?",
+        "kql": "tgt.process.image.sha256 = '{{SHA256}}' or tgt.file.sha256 = '{{SHA256}}'\n| group events = count(), first = min(event.time), last = max(event.time) by endpoint.name, src.process.user\n| sort -events",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Fields like endpoint.name take one value."
+      },
+      {
+        "ctx": "Which endpoints connected to this IP?",
+        "kql": "dst.ip.address = '{{IP}}'\n| group connections = count(), last = max(event.time) by endpoint.name, src.process.name, dst.port.number\n| sort -connections",
+        "read": "Several endpoints talking to the same external IP widens the incident."
+      },
+      {
+        "ctx": "Which endpoints looked up this domain?",
+        "kql": "event.dns.request contains '{{DOMAIN}}'\n| group lookups = count(), last = max(event.time) by endpoint.name, event.dns.request\n| sort -lookups",
+        "read": "Put the domain in Domain / URL fragment; subdomains match too."
+      }
+    ],
+    "fp": "Shared infrastructure (CDNs, cloud) shows up on many endpoints; check the owner in OSINT first."
+  },
+  {
+    "id": "s1-logons",
+    "name": "SentinelOne: logons and remote access on an endpoint",
+    "cat": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "info",
+    "mitre": [
+      "T1078",
+      "T1021"
+    ],
+    "playbook": true,
+    "summary": "Who logged on to an endpoint, how, and from where, plus failed attempts.",
+    "steps": [
+      {
+        "ctx": "Logons on the endpoint by user and type",
+        "kql": "endpoint.name = '{{DEVICE}}' event.category = 'logins'\n| group logons = count(), last = max(event.time) by event.login.userName, event.login.type, event.login.loginIsSuccessful, src.endpoint.ip.address\n| sort -logons",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Fields like endpoint.name take one value. Failed logons followed by a success for the same user from the same source is a brute-force success; type REMOTE_INTERACTIVE is RDP."
+      }
+    ],
+    "fp": "Service and admin accounts log on frequently; filter known ones."
   }
 ];
