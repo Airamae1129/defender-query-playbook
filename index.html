@@ -288,10 +288,12 @@ const PARAMS = {
   SESSIONID:{label:"Session ID", ph:"00000000-0000-…"},
   TABLE:{label:"Table name (DataType)", ph:"ThreatIntelIndicators"},
   RESOURCE:{label:"Azure resource name fragment", ph:"vendor-connector"},
-  ALERTNAME:{label:"Alert name (exact title)", ph:"A potentially malicious web request…"}
+  ALERTNAME:{label:"Alert name (exact title)", ph:"A potentially malicious web request…"},
+  SPN:{label:"Service principal name", ph:"Teams Inventory"},
+  USERAGENT:{label:"User agent (distinctive part)", ph:"python-requests"}
 };
 
-const SENTINEL_TABLES = ["SigninLogs","AADNonInteractiveUserSignInLogs","AuditLogs","SecurityEvent","OfficeActivity","CommonSecurityLog","Syslog","Heartbeat","DnsEvents","Event","SecurityIncident","Usage","ThreatIntelligenceIndicator","ThreatIntelIndicators","AzureActivity","Anomalies","AGWAccessLogs","AGWFirewallLogs","AzureDiagnostics","SecurityAlert","SentinelBehaviorInfo","AppDependencies","AppExceptions","AppTraces","AppRequests","AppMetrics","AppPerformanceCounters"];
+const SENTINEL_TABLES = ["SigninLogs","AADNonInteractiveUserSignInLogs","AADServicePrincipalSignInLogs","AuditLogs","SecurityEvent","OfficeActivity","CommonSecurityLog","Syslog","Heartbeat","DnsEvents","Event","SecurityIncident","Usage","ThreatIntelligenceIndicator","ThreatIntelIndicators","AzureActivity","Anomalies","AGWAccessLogs","AGWFirewallLogs","AzureDiagnostics","SecurityAlert","SentinelBehaviorInfo","AppDependencies","AppExceptions","AppTraces","AppRequests","AppMetrics","AppPerformanceCounters"];
 const XDR_TABLES = ["DeviceNetworkInfo","DeviceProcessEvents","DeviceNetworkEvents","DeviceFileEvents","DeviceRegistryEvents","DeviceLogonEvents","DeviceEvents","DeviceImageLoadEvents","DeviceInfo","AlertInfo","AlertEvidence","EntraIdSignInEvents","EntraIdSpnSignInEvents","AADSignInEventsBeta","IdentityLogonEvents","IdentityDirectoryEvents","IdentityQueryEvents","IdentityInfo","EmailEvents","EmailAttachmentInfo","EmailUrlInfo","EmailPostDeliveryEvents","UrlClickEvents","CloudAppEvents","OAuthAppInfo"];
 const ALL_TABLES = [...SENTINEL_TABLES, ...XDR_TABLES];
 

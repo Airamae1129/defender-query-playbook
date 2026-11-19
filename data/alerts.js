@@ -2047,6 +2047,263 @@ window.PLAYBOOK_ALERTS = [
     "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
   },
   {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-user-signin-investigation",
+    "name": "Sentinel: user sign-in investigation (success, IP, devices)",
+    "sev": "medium",
+    "mitre": [
+      "T1078"
+    ],
+    "summary": "Day-to-day SigninLogs checks for one or more users: successful sign-ins, sign-ins from a specific IP, the devices used, and the time range seen per location.",
+    "steps": [
+      {
+        "ctx": "Successful sign-ins for the user",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"   // 0 = success\n| project TimeGenerated, UserPrincipalName, AppDisplayName, ResourceDisplayName, IPAddress,\n          Location, City = tostring(LocationDetails.city), ClientAppUsed, UserAgent,\n          DeviceOS = tostring(DeviceDetail.operatingSystem), DeviceBrowser = tostring(DeviceDetail.browser),\n          ResultSignature\n| order by TimeGenerated desc",
+        "read": "Several users? Put them comma-separated in User (UPN); the query switches to in~ automatically. ResultType is a string in SigninLogs, so \"0\" is success."
+      },
+      {
+        "ctx": "All sign-in attempts for the user from a specific IP",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where IPAddress == \"{{IP}}\"\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, ResourceDisplayName,\n          ResultType, ResultSignature, ResultDescription, ConditionalAccessStatus, AuthenticationRequirement\n| order by TimeGenerated desc",
+        "read": "No success rows (only failures or 50126/50053) means the attempt did not get in. A success with MFA satisfied from an unknown IP needs the user confirmed."
+      },
+      {
+        "ctx": "Successful sign-ins from the IP across all users",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where IPAddress == \"{{IP}}\"\n| where ResultType == \"0\"\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, ResourceDisplayName, ResultSignature\n| order by TimeGenerated desc",
+        "read": "One IP used by many unrelated users is usually an office, VPN or proxy egress; a single unexpected user on a foreign IP is the case to escalate."
+      },
+      {
+        "ctx": "Result breakdown for the IP across all accounts (bar chart)",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where IPAddress == \"{{IP}}\"\n| summarize Count = count(), Users = dcount(UserPrincipalName) by ResultSignature, ResultType, ResultDescription\n| order by Count desc\n| render barchart",
+        "read": "Mostly failures against many users from one IP is password spraying; check whether any SUCCESS row appears for the same IP."
+      },
+      {
+        "ctx": "Devices and location details behind the user's successful sign-ins",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| extend Device = parse_json(tostring(DeviceDetail)), Loc = parse_json(tostring(LocationDetails)), Stat = parse_json(tostring(Status))\n| project TimeGenerated, UserPrincipalName, App = ResourceDisplayName, ResultType, ResultDescription,\n          StatusErrorCode = toint(Stat.errorCode), StatusDetails = tostring(Stat.additionalDetails), IPAddress,\n          DeviceName = tostring(Device.displayName), DeviceOS = tostring(Device.operatingSystem),\n          DeviceBrowser = tostring(Device.browser), DeviceId = tostring(Device.deviceId),\n          TrustType = tostring(Device.trustType), IsCompliant = tostring(Device.isCompliant), IsManaged = tostring(Device.isManaged),\n          City = tostring(Loc.city), State = tostring(Loc.state), CountryOrRegion = tostring(Loc.countryOrRegion),\n          Latitude = toreal(Loc.geoCoordinates.latitude), Longitude = toreal(Loc.geoCoordinates.longitude)\n| order by TimeGenerated desc",
+        "read": "An empty DeviceId and TrustType means an unregistered device. TrustType 'Azure AD registered' is a personal (BYOD) device, 'Azure AD joined' or 'Hybrid Azure AD joined' is corporate."
+      },
+      {
+        "ctx": "Time range seen per location (first and last sign-in)",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| summarize Count = count(), StartTime = min(TimeGenerated), EndTime = max(TimeGenerated), IPs = make_set(IPAddress, 50)\n    by Location = tostring(LocationDetails.city), Country = tostring(LocationDetails.countryOrRegion)\n| extend Timeframe = strcat(format_datetime(StartTime, 'yyyy-MM-dd HH:mm:ss'), ' to ', format_datetime(EndTime, 'yyyy-MM-dd HH:mm:ss'))\n| order by Count desc",
+        "read": "Paste the Timeframe column straight into the ticket. Two countries whose time ranges overlap is impossible travel unless one is a VPN."
+      }
+    ],
+    "fp": "VPN and mobile carrier IPs geolocate to odd cities; travelling users. Confirm with the user or manager before closing as malicious."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-signin-locations",
+    "name": "Sentinel: sign-in locations (map and outside home country)",
+    "sev": "medium",
+    "mitre": [
+      "T1078"
+    ],
+    "summary": "Show where users signed in from on a map, and list or chart successful sign-ins outside the client's home country.",
+    "steps": [
+      {
+        "ctx": "Successful sign-in locations on a map (one or more users)",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| extend Latitude = toreal(LocationDetails.geoCoordinates.latitude), Longitude = toreal(LocationDetails.geoCoordinates.longitude)\n| summarize Count = count() by UserPrincipalName, Latitude, Longitude,\n    Location = tostring(LocationDetails.city), Country = tostring(LocationDetails.countryOrRegion)\n| render scatterchart with (kind=map)",
+        "read": "Put several users comma-separated in User (UPN) to see them on one map. Coordinates live under LocationDetails.geoCoordinates. The map renders in the Sentinel Logs blade; switch to Results for the table."
+      },
+      {
+        "ctx": "Successful sign-ins outside the home countries",
+        "kql": "let Home = dynamic([{{COUNTRIES}}]);\nSigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| extend Country = tostring(LocationDetails.countryOrRegion), City = tostring(LocationDetails.city), State = tostring(LocationDetails.state)\n| where isnotempty(Country) and Country !in~ (Home)\n| project TimeGenerated, UserPrincipalName, IPAddress, City, State, Country, AppDisplayName, ResultSignature, ResultDescription, UserAgent\n| order by TimeGenerated desc",
+        "read": "Put the client's home country codes in Countries (e.g. AU). No rows = all successful sign-ins were in the home countries."
+      },
+      {
+        "ctx": "Outside the home countries by country (bar chart)",
+        "kql": "let Home = dynamic([{{COUNTRIES}}]);\nSigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where ResultType == \"0\"\n| extend Country = tostring(LocationDetails.countryOrRegion)\n| where isnotempty(Country) and Country !in~ (Home)\n| summarize Count = count() by Country\n| order by Count desc\n| render barchart",
+        "read": "A single country with a handful of sign-ins is typical of travel or VPN; many countries in a short window is a stronger compromise signal."
+      }
+    ],
+    "fp": "Travel, corporate VPN egress abroad, and Microsoft/carrier IPs with wrong geolocation."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-bad-useragent",
+    "name": "Attempted Authentication from Known-Bad UserAgent",
+    "sev": "medium",
+    "mitre": [
+      "T1078",
+      "T1110"
+    ],
+    "summary": "Check the HTTP user agent in the sign-in, whether the client was a browser, mobile app or desktop client, and whether the device is Entra (Azure AD) registered.",
+    "steps": [
+      {
+        "ctx": "The user's sign-ins with user agent, client and device trust",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, ClientAppUsed, UserAgent,\n          DeviceBrowser = tostring(DeviceDetail.browser), DeviceOS = tostring(DeviceDetail.operatingSystem),\n          DeviceName = tostring(DeviceDetail.displayName), TrustType = tostring(DeviceDetail.trustType),\n          IsCompliant = tostring(DeviceDetail.isCompliant), ResultType, ResultDescription\n| order by TimeGenerated desc",
+        "read": "Check: HTTP User Agent (UserAgent), Device Browser (ClientAppUsed 'Browser' vs 'Mobile Apps and Desktop clients'), Device Status (TrustType 'Azure AD registered' / joined). Tools such as python-requests, curl, Go-http-client or axios against a user account are not normal clients."
+      },
+      {
+        "ctx": "Everyone who used the same user agent",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserAgent has \"{{USERAGENT}}\"\n| summarize Attempts = count(), Successes = countif(ResultType == \"0\"), IPs = make_set(IPAddress, 50), Last = max(TimeGenerated)\n    by UserPrincipalName, AppDisplayName\n| order by Attempts desc",
+        "read": "Put a distinctive part of the user agent in User agent. Many users with only failures is spraying; any Successes row needs the session revoked and password reset."
+      },
+      {
+        "ctx": "Non-interactive sign-ins with the same user agent",
+        "kql": "AADNonInteractiveUserSignInLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\" or UserAgent has \"{{USERAGENT}}\"\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, UserAgent, ResultType, ResultDescription\n| order by TimeGenerated desc",
+        "read": "Token replay and scripted access often appear only in non-interactive logs."
+      }
+    ],
+    "fp": "Legitimate scripts, migration tools and some mail clients use generic user agents; check with the client before blocking."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-service-principal-signins",
+    "name": "Sentinel: service principal sign-ins",
+    "sev": "medium",
+    "mitre": [
+      "T1078.004"
+    ],
+    "summary": "Check sign-ins by an app registration / service principal: successful logins from an IP, and its daily pattern by location.",
+    "steps": [
+      {
+        "ctx": "Successful service principal sign-ins from the IP",
+        "kql": "AADServicePrincipalSignInLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where ServicePrincipalName == \"{{SPN}}\"\n| where IPAddress == \"{{IP}}\"\n| where ResultType == \"0\"\n| project TimeGenerated, ServicePrincipalName, ServicePrincipalId, AppId, IPAddress, Location, ResourceDisplayName, ResultType\n| order by TimeGenerated desc",
+        "read": "Put the app's display name in Service principal name. Check the IP owner in OSINT: Microsoft or the vendor's cloud is expected, residential or VPS hosting is not."
+      },
+      {
+        "ctx": "Daily sign-ins by location (baseline)",
+        "kql": "AADServicePrincipalSignInLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where ServicePrincipalName == \"{{SPN}}\"\n| summarize Count = count() by bin(TimeGenerated, 1d), ServicePrincipalName, Location, ResultType\n| order by TimeGenerated asc",
+        "read": "A service principal normally signs in from the same few locations every day; a new country on the alert date is the anomaly."
+      },
+      {
+        "ctx": "New IPs for the service principal compared with the baseline",
+        "kql": "let Known = AADServicePrincipalSignInLogs\n    | where TimeGenerated between (ago({{BASELINE}}) .. ago({{LOOKBACK}}))\n    | where ServicePrincipalName == \"{{SPN}}\"\n    | distinct IPAddress;\nAADServicePrincipalSignInLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where ServicePrincipalName == \"{{SPN}}\"\n| where IPAddress !in (Known)\n| summarize Count = count(), First = min(TimeGenerated), Last = max(TimeGenerated) by IPAddress, Location, ResourceDisplayName",
+        "read": "Each row is an IP the app never used during the baseline window."
+      }
+    ],
+    "fp": "Vendor platform moves between cloud regions; credential rotation."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-identityinfo-lookup",
+    "name": "Sentinel: user details lookup (IdentityInfo wildcard search)",
+    "sev": "info",
+    "mitre": [],
+    "summary": "Find a user's job title, department, country, manager and status when you only know part of the UPN or name.",
+    "steps": [
+      {
+        "ctx": "Latest identity record for the user (partial match)",
+        "kql": "IdentityInfo\n| where TimeGenerated > ago(14d)\n| where AccountUPN contains \"{{UPN}}\" or AccountName contains \"{{ACCOUNT}}\"\n| summarize arg_max(TimeGenerated, *) by AccountUPN\n| project AccountUPN, AccountDisplayName, JobTitle, Department, Country, City, Manager, IsAccountEnabled, AssignedRoles, Tags, RiskLevel",
+        "read": "IdentityInfo is refreshed every 14 days, so look back at least that far. contains is a partial (wildcard) match; leave Account name empty if you only have the UPN."
+      }
+    ],
+    "fp": "Reference lookup."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-malicious-ip-traffic",
+    "name": "Sentinel: traffic to or from a detected malicious IP",
+    "sev": "medium",
+    "mitre": [
+      "T1071",
+      "T1190"
+    ],
+    "summary": "For 'A network session source address…', exploitation traffic and threat-intel IP alerts: check endpoint connections, DNS events and firewall logs for the IP.",
+    "steps": [
+      {
+        "ctx": "Endpoint connections to the IP (Defender table in Sentinel)",
+        "kql": "DeviceNetworkEvents\n| where TimeGenerated > ago({{BASELINE}})\n| where RemoteIP == \"{{IP}}\"\n| project TimeGenerated, DeviceName, ActionType, InitiatingProcessFileName, InitiatingProcessAccountName, LocalIP, RemoteIP, RemotePort, Protocol, ReportId\n| order by TimeGenerated desc",
+        "read": "Defender tables streamed into Sentinel use TimeGenerated. ConnectionSuccess means traffic actually left the host; no rows means no endpoint talked to it."
+      },
+      {
+        "ctx": "DNS events mentioning the IP",
+        "kql": "DnsEvents\n| where TimeGenerated > ago({{BASELINE}})\n| where IPAddresses has \"{{IP}}\" or ClientIP == \"{{IP}}\"\n| project TimeGenerated, Computer, ClientIP, Name, IPAddresses, QueryType, ResultCode\n| order by TimeGenerated desc",
+        "read": "No rows: 'There are no outbound network traffic on the detected malicious IP address in the DNS Event. No further action required.'"
+      },
+      {
+        "ctx": "Firewall / exploitation traffic for the IP (CommonSecurityLog)",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{BASELINE}})\n| where SourceIP == \"{{IP}}\" or DestinationIP == \"{{IP}}\"\n| project TimeGenerated, DeviceVendor, DeviceProduct, DeviceEventClassID, Activity, DeviceAction, Reason, SourceIP, DestinationIP, DestinationPort, RequestURL\n| order by TimeGenerated desc",
+        "read": "DeviceAction deny/drop/reset means the firewall blocked it. Allowed inbound exploitation traffic to a public server needs the server checked."
+      },
+      {
+        "ctx": "Free-text search for the IP in all firewall fields",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{BASELINE}})\n| search \"{{IP}}\"\n| project TimeGenerated, DeviceVendor, DeviceEventClassID, Activity, DeviceAction, Reason, SourceIP, DestinationIP",
+        "read": "search is slower but also finds the IP in AdditionalExtensions and message fields."
+      }
+    ],
+    "fp": "Scanners hitting public IPs constantly; shared CDN or cloud IPs flagged by threat intel."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-file-hash-hunt",
+    "name": "Sentinel: file hash mini threat hunt",
+    "sev": "medium",
+    "mitre": [
+      "T1204",
+      "T1105"
+    ],
+    "summary": "Where has a file hash been seen, which hosts have the file, and what archives or executables arrived on a host.",
+    "steps": [
+      {
+        "ctx": "Mini threat hunt: one or more SHA-256 hashes across endpoint and email tables",
+        "kql": "union DeviceEvents, DeviceFileEvents, DeviceProcessEvents, EmailAttachmentInfo\n| where TimeGenerated > ago({{BASELINE}})\n| where SHA256 in~ (\"{{SHA256}}\")\n| project TimeGenerated, Type, DeviceName, ActionType, FileName, FolderPath, SHA256, InitiatingProcessAccountName, RecipientEmailAddress, SenderFromAddress\n| order by TimeGenerated desc",
+        "read": "Put several hashes comma-separated in File SHA-256; they expand inside the list. Type shows which table matched."
+      },
+      {
+        "ctx": "Hash prevalence (first/last seen and devices)",
+        "kql": "DeviceFileEvents\n| where TimeGenerated > ago({{BASELINE}})\n| where SHA256 == \"{{SHA256}}\"\n| summarize FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated), DeviceCount = dcount(DeviceName), Devices = make_set(DeviceName, 100) by SHA256",
+        "read": "One device = targeted; many devices = software deployment or a campaign."
+      },
+      {
+        "ctx": "The file on a specific host",
+        "kql": "DeviceFileEvents\n| where TimeGenerated > ago({{BASELINE}})\n| where DeviceName =~ \"{{DEVICE}}\"\n| where FileName =~ \"{{FILENAME}}\"\n| project TimeGenerated, ActionType, FileName, FolderPath, SHA256, InitiatingProcessFileName, InitiatingProcessAccountName, FileOriginUrl\n| order by TimeGenerated desc",
+        "read": "FileOriginUrl and InitiatingProcessFileName (browser, Outlook, 7-Zip) show where the file came from. Check the SHA256 in OSINT."
+      },
+      {
+        "ctx": "Archives and executables written on the host",
+        "kql": "DeviceFileEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| where DeviceName =~ \"{{DEVICE}}\"\n| where FileName endswith \".zip\" or FileName endswith \".exe\" or FileName endswith \".iso\" or FileName endswith \".msi\"\n| project TimeGenerated, ActionType, FileName, FolderPath, SHA256, InitiatingProcessFileName, InitiatingProcessAccountName\n| order by TimeGenerated desc",
+        "read": "Look for files in Downloads, Temp or AppData that were extracted from the archive in the alert."
+      }
+    ],
+    "fp": "Installers and updates pushed by IT; known-good files flagged by a single engine."
+  },
+  {
+    "cat": "Sentinel logs",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "playbook": true,
+    "id": "sentinel-darktrace-saas",
+    "name": "Darktrace Anomalous SaaS Resources detected",
+    "sev": "medium",
+    "mitre": [
+      "T1078.004",
+      "T1530"
+    ],
+    "summary": "Darktrace flagged unusual SaaS resource access. Check the user agent and sign-ins of the account, the caller IP in cloud activity, and whether any endpoint talked to the remote IP.",
+    "steps": [
+      {
+        "ctx": "Account sign-ins with user agent",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, ResourceDisplayName, UserAgent, ClientAppUsed, ResultType, ResultDescription\n| order by TimeGenerated desc",
+        "read": "Compare the IP and user agent with the Darktrace event. A new IP plus a new user agent around the alert time is suspicious."
+      },
+      {
+        "ctx": "SaaS activity by the account and caller IP (Office 365 and Azure)",
+        "kql": "union isfuzzy=true\n    (OfficeActivity\n        | where TimeGenerated > ago({{LOOKBACK}})\n        | where UserId =~ \"{{UPN}}\" or ClientIP has \"{{IP}}\"\n        | project TimeGenerated, Source = \"OfficeActivity\", User = UserId, CallerIP = ClientIP, Operation, Workload = OfficeWorkload, Object = OfficeObjectId),\n    (AzureActivity\n        | where TimeGenerated > ago({{LOOKBACK}})\n        | where Caller =~ \"{{UPN}}\" or CallerIpAddress == \"{{IP}}\"\n        | project TimeGenerated, Source = \"AzureActivity\", User = Caller, CallerIP = CallerIpAddress, Operation = OperationNameValue, Workload = ResourceProviderValue, Object = _ResourceId)\n| order by TimeGenerated desc",
+        "read": "Bulk downloads (FileDownloaded, FileSyncDownloadedFull) or new sharing links from the caller IP are the resources Darktrace usually flags."
+      },
+      {
+        "ctx": "Endpoint connections to the remote IP",
+        "kql": "DeviceNetworkEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| where RemoteIP == \"{{IP}}\"\n| project TimeGenerated, DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName, RemoteIP, RemotePort, RemoteUrl, ActionType\n| order by TimeGenerated desc",
+        "read": "No rows means no onboarded endpoint connected to the IP."
+      }
+    ],
+    "fp": "New SaaS tools adopted by a team, backup/sync clients, and users on travel or new VPNs."
+  },
+  {
     "id": "cs-host-activity",
     "name": "CrowdStrike: host activity (processes, network, DNS, files)",
     "cat": "CrowdStrike",
