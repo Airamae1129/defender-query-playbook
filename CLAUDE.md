@@ -14,7 +14,8 @@ A static site that maps Microsoft Defender XDR / Sentinel alerts to step-by-step
 {
   "id": "kebab-case-unique-id",
   "name": "Alert title as it appears in Defender",
-  "cat": "Endpoint | Identity | Email | Cloud apps | Network | SIEM health | Sentinel logs | CrowdStrike | Splunk | SentinelOne",
+  "cat": "Endpoint | Identity | Email | Cloud apps | Cloud infra | Network | Firewall | DNS | Web & proxy | Linux | Threat intel | SIEM health",
+  "platform": "Sentinel | CrowdStrike | Splunk | SentinelOne | Rapid7 (leave out for Defender)",
   "src": "Product that raises it, e.g. Defender for Endpoint",
   "sev": "high | medium | low | info",
   "mitre": ["T1110", "T1110.003"],
@@ -75,4 +76,4 @@ A copy of this site is published as a claude.ai artifact, where the "+ Add alert
 
 `ngfw-malicious-ip-auth` holds CrowdStrike Falcon Next-Gen SIEM (LogScale CQL) queries, not KQL. Fill-in tokens work the same, but CQL comparisons like `user.name="{{ACCOUNT}}"` take a single value only.
 
-The **CrowdStrike** (LogScale CQL), **Splunk** (SPL) and **SentinelOne** (PowerQuery) categories hold non-KQL queries. Use `earliest=-{{LOOKBACK}}` for Splunk time windows; CrowdStrike and SentinelOne take their time range from the console. Their `field="{{TOKEN}}"` comparisons take one value. **Sentinel logs** entries are per-table exploration queries (sample rows, schema, top events, daily volume, one entity).
+The **CrowdStrike** (LogScale CQL), **Splunk** (SPL), **SentinelOne** (PowerQuery) and **Rapid7** (InsightIDR LEQL; name the log set at the start of each step context) platforms hold non-KQL queries. The "platform" field picks the tab; "cat" is the log-source category inside it. Use `earliest=-{{LOOKBACK}}` for Splunk time windows; CrowdStrike and SentinelOne take their time range from the console. Their `field="{{TOKEN}}"` comparisons take one value. Sentinel "log sample" entries are per-table exploration queries (sample rows, schema, top events, daily volume, one entity).

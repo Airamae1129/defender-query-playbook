@@ -1,6 +1,6 @@
 # SOC Triage Query Hub
 
-Pick an alert, type in its entities, copy ready-to-run hunting queries for Microsoft Defender XDR, Microsoft Sentinel, CrowdStrike Falcon, Splunk and SentinelOne, and check indicators in the OSINT tab. Each platform has its own tab.
+Pick an alert, type in its entities, copy ready-to-run hunting queries for Microsoft Defender XDR, Microsoft Sentinel, CrowdStrike Falcon, Splunk, SentinelOne and Rapid7 InsightIDR, and check indicators in the OSINT tab. Each platform has its own tab, split by log source (Endpoint, Identity, Email, Cloud apps, Cloud infra, Network, Firewall, DNS, Web & proxy, Linux, Threat intel, SIEM health).
 
 Owner: Aira Mae Bugay
 

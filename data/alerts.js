@@ -922,7 +922,7 @@ window.PLAYBOOK_ALERTS = [
   {
     "id": "fw-ioc-exfil",
     "name": "Multi-stage incident: execution & exfiltration (firewall IoC / first-seen IP)",
-    "cat": "Network",
+    "cat": "Firewall",
     "src": "Sentinel (CommonSecurityLog) + Defender for Endpoint",
     "sev": "high",
     "mitre": [
@@ -959,7 +959,7 @@ window.PLAYBOOK_ALERTS = [
   {
     "id": "first-seen-ext-ip",
     "name": "First-seen external IP (firewall connections)",
-    "cat": "Network",
+    "cat": "Firewall",
     "src": "Sentinel (CommonSecurityLog / Fortigate) + Defender for Endpoint",
     "sev": "medium",
     "mitre": [
@@ -1191,7 +1191,7 @@ window.PLAYBOOK_ALERTS = [
   {
     "id": "waf-malicious-request",
     "name": "Malicious web request executed against a web server (App Gateway WAF)",
-    "cat": "Network",
+    "cat": "Web & proxy",
     "src": "Azure Application Gateway WAF (Sentinel)",
     "sev": "medium",
     "mitre": [
@@ -1257,7 +1257,7 @@ window.PLAYBOOK_ALERTS = [
   {
     "id": "waf-react2shell",
     "name": "App Gateway WAF – code injection (React2Shell, CVE-2025-55182)",
-    "cat": "Network",
+    "cat": "Web & proxy",
     "src": "Azure Application Gateway WAF + Defender for Endpoint",
     "sev": "high",
     "mitre": [
@@ -1422,7 +1422,7 @@ window.PLAYBOOK_ALERTS = [
   {
     "id": "ngfw-malicious-ip-auth",
     "name": "NGFW: successful authentication from a malicious IP (GlobalProtect / RADIUS)",
-    "cat": "Network",
+    "cat": "Firewall",
     "src": "CrowdStrike Falcon Next-Gen SIEM (LogScale CQL) – Palo Alto NGFW",
     "sev": "high",
     "mitre": [
@@ -1468,7 +1468,7 @@ window.PLAYBOOK_ALERTS = [
   {
     "id": "cross-signal-ip",
     "name": "Cross-signal IP match: firewall + Entra sign-in",
-    "cat": "Network",
+    "cat": "Firewall",
     "src": "Sentinel (SecurityAlert, SigninLogs, CommonSecurityLog)",
     "sev": "medium",
     "mitre": [
@@ -1558,9 +1558,62 @@ window.PLAYBOOK_ALERTS = [
     "fp": "Monitoring and backup tools that authenticate with NTLM to many servers, and legacy applications configured with an admin account."
   },
   {
+    "id": "linux-suspicious-activity",
+    "name": "Linux server: suspicious commands, reverse shells and new users (MDE)",
+    "cat": "Linux",
+    "src": "Microsoft Defender XDR (Advanced hunting)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.004",
+      "T1105",
+      "T1136.001"
+    ],
+    "playbook": true,
+    "summary": "Linux hosts onboarded to Defender for Endpoint: download-and-execute, reverse shells, cron/user changes and sudo use.",
+    "steps": [
+      {
+        "ctx": "Download-and-execute and reverse-shell patterns",
+        "kql": "DeviceProcessEvents\n| where Timestamp > ago({{LOOKBACK}})\n| where DeviceName startswith \"{{DEVICE}}\"\n| where ProcessCommandLine has_any (\"curl \", \"wget \", \"/dev/tcp/\", \"nc -e\", \"ncat \", \"bash -i\", \"base64 -d\", \"chmod +x\", \"python -c\", \"mkfifo\")\n| project Timestamp, DeviceName, AccountName, InitiatingProcessFileName, ProcessCommandLine\n| order by Timestamp desc",
+        "read": "curl|wget piped into sh, /dev/tcp/ and nc -e are reverse shells or droppers. A web server user (www-data, nginx, apache) running them means the web app was exploited."
+      },
+      {
+        "ctx": "New users, sudoers and cron changes",
+        "kql": "DeviceProcessEvents\n| where Timestamp > ago({{BASELINE}})\n| where DeviceName startswith \"{{DEVICE}}\"\n| where FileName in~ (\"useradd\", \"adduser\", \"usermod\", \"passwd\", \"crontab\", \"visudo\") or ProcessCommandLine has_any (\"/etc/sudoers\", \"/etc/cron\", \"authorized_keys\")\n| project Timestamp, DeviceName, AccountName, ProcessCommandLine\n| order by Timestamp desc",
+        "read": "Persistence on Linux: new users, keys added to authorized_keys, cron jobs and sudoers edits."
+      }
+    ],
+    "fp": "Configuration management (Ansible, Puppet, Chef) and admins doing maintenance."
+  },
+  {
+    "id": "defender-threat-intel-match",
+    "name": "Threat intel: hunt a list of IoCs (IPs, domains, hashes) across Defender",
+    "cat": "Threat intel",
+    "src": "Microsoft Defender XDR (Advanced hunting)",
+    "sev": "medium",
+    "mitre": [
+      "T1071",
+      "T1105"
+    ],
+    "playbook": true,
+    "summary": "Match lists of IoC IPs and hashes from a threat report against network, file and email data.",
+    "steps": [
+      {
+        "ctx": "IoC IPs: network connections and sign-ins",
+        "kql": "let IOCs = dynamic([{{IPS}}]);\nunion isfuzzy=true\n    (DeviceNetworkEvents | where Timestamp > ago({{BASELINE}}) | where RemoteIP in (IOCs) | project Timestamp, Source = \"Network\", DeviceName, Account = InitiatingProcessAccountName, IOC = RemoteIP, Detail = InitiatingProcessFileName),\n    (EntraIdSignInEvents | where Timestamp > ago({{BASELINE}}) | where IPAddress in (IOCs) | project Timestamp, Source = \"Sign-in\", DeviceName, Account = AccountUpn, IOC = IPAddress, Detail = Application)\n| order by Timestamp desc",
+        "read": "Put the IoC IPs comma-separated in IP addresses. A connection that was allowed, or a successful sign-in, is the escalation case."
+      },
+      {
+        "ctx": "IoC hash: files, processes and email attachments",
+        "kql": "union isfuzzy=true DeviceFileEvents, DeviceProcessEvents, DeviceImageLoadEvents, EmailAttachmentInfo\n| where Timestamp > ago({{BASELINE}})\n| where SHA256 in~ (\"{{SHA256}}\")\n| project Timestamp, Type, DeviceName, FileName, FolderPath, SHA256, RecipientEmailAddress\n| order by Timestamp desc",
+        "read": "Put several hashes comma-separated in File SHA-256."
+      }
+    ],
+    "fp": "Shared hosting / CDN IPs in threat reports."
+  },
+  {
     "id": "sentinel-workspace-overview",
     "name": "Sentinel workspace overview: which tables have data?",
-    "cat": "Sentinel logs",
+    "cat": "SIEM health",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1588,12 +1641,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "SecurityIncident keeps a row per update, so arg_max takes the latest state of each incident."
       }
     ],
-    "fp": "Reference entry for exploring a workspace, not an alert."
+    "fp": "Reference entry for exploring a workspace, not an alert.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-signinlogs",
     "name": "Sentinel log sample: SigninLogs (Entra ID interactive sign-ins)",
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1626,12 +1680,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the user in User (UPN). Look for failures followed by a success, new countries, or legacy ClientAppUsed values (IMAP, POP, SMTP)."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-aadnoninteractiveusersigninlogs",
     "name": "Sentinel log sample: AADNonInteractiveUserSignInLogs (token refreshes)",
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1664,12 +1719,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "An IP or country the user never uses interactively, refreshing tokens for mail apps, can mean a stolen token."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-auditlogs",
     "name": "Sentinel log sample: AuditLogs (Entra ID directory changes)",
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1702,12 +1758,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the user in User (UPN). New authentication methods or roles right after an unusual sign-in suggest account takeover."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-securityevent",
     "name": "Sentinel log sample: SecurityEvent (Windows Security events)",
-    "cat": "Sentinel logs",
+    "cat": "Endpoint",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1740,12 +1797,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the host in Device name. 1102 (log cleared), 4720 or group additions on a server are high priority."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-syslog",
     "name": "Sentinel log sample: Syslog (Linux hosts)",
-    "cat": "Sentinel logs",
+    "cat": "Linux",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1778,12 +1836,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the Linux host in Device name."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-commonsecuritylog",
     "name": "Sentinel log sample: CommonSecurityLog (firewalls / proxies via CEF)",
-    "cat": "Sentinel logs",
+    "cat": "Firewall",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1816,12 +1875,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the IP in IP address. Large BytesOut from an internal host to one external IP is the exfiltration pattern."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-officeactivity",
     "name": "Sentinel log sample: OfficeActivity (Exchange, SharePoint, OneDrive, Teams)",
-    "cat": "Sentinel logs",
+    "cat": "Email",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1854,12 +1914,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the user in User (UPN). For inbox rules and forwarding detail, use the mailbox and account audit entry."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-azureactivity",
     "name": "Sentinel log sample: AzureActivity (Azure subscription operations)",
-    "cat": "Sentinel logs",
+    "cat": "Cloud infra",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1892,12 +1953,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the user (Caller UPN) in User (UPN)."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-securityalert",
     "name": "Sentinel log sample: SecurityAlert (alerts from all products)",
-    "cat": "Sentinel logs",
+    "cat": "SIEM health",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1930,12 +1992,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Fill in any of User (UPN), Device name or IP address; fields you leave empty simply match nothing. Several alerts on the same entity in a short time point to a real incident."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-heartbeat",
     "name": "Sentinel log sample: Heartbeat (agent health)",
-    "cat": "Sentinel logs",
+    "cat": "SIEM health",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -1968,12 +2031,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Each row is a host that stopped reporting in the last hour or more. A silent host during an incident may be off, isolated, or tampered with."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-dnsevents",
     "name": "Sentinel log sample: DnsEvents (Windows DNS server)",
-    "cat": "Sentinel logs",
+    "cat": "DNS",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -2006,12 +2070,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the domain in Domain / URL fragment. ClientIP is the internal host that asked; map it to a device in Defender."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
     "id": "sentinel-event",
     "name": "Sentinel log sample: Event (Windows non-security logs)",
-    "cat": "Sentinel logs",
+    "cat": "Endpoint",
     "src": "Microsoft Sentinel (Log Analytics)",
     "sev": "info",
     "mitre": [],
@@ -2044,10 +2109,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the host in Device name. A new service (7045) with a random name or a path in Temp/ProgramData is suspicious."
       }
     ],
-    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version."
+    "fp": "Reference entry for exploring a log table, not an alert. Column availability depends on the connector and its version.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-user-signin-investigation",
@@ -2089,10 +2155,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "Paste the Timeframe column straight into the ticket. Two countries whose time ranges overlap is impossible travel unless one is a VPN."
       }
     ],
-    "fp": "VPN and mobile carrier IPs geolocate to odd cities; travelling users. Confirm with the user or manager before closing as malicious."
+    "fp": "VPN and mobile carrier IPs geolocate to odd cities; travelling users. Confirm with the user or manager before closing as malicious.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-signin-locations",
@@ -2119,10 +2186,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "A single country with a handful of sign-ins is typical of travel or VPN; many countries in a short window is a stronger compromise signal."
       }
     ],
-    "fp": "Travel, corporate VPN egress abroad, and Microsoft/carrier IPs with wrong geolocation."
+    "fp": "Travel, corporate VPN egress abroad, and Microsoft/carrier IPs with wrong geolocation.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-bad-useragent",
@@ -2150,10 +2218,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "Token replay and scripted access often appear only in non-interactive logs."
       }
     ],
-    "fp": "Legitimate scripts, migration tools and some mail clients use generic user agents; check with the client before blocking."
+    "fp": "Legitimate scripts, migration tools and some mail clients use generic user agents; check with the client before blocking.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-service-principal-signins",
@@ -2180,10 +2249,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "Each row is an IP the app never used during the baseline window."
       }
     ],
-    "fp": "Vendor platform moves between cloud regions; credential rotation."
+    "fp": "Vendor platform moves between cloud regions; credential rotation.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Identity",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-identityinfo-lookup",
@@ -2198,10 +2268,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "IdentityInfo is refreshed every 14 days, so look back at least that far. contains is a partial (wildcard) match; leave Account name empty if you only have the UPN."
       }
     ],
-    "fp": "Reference lookup."
+    "fp": "Reference lookup.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Network",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-malicious-ip-traffic",
@@ -2234,10 +2305,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "search is slower but also finds the IP in AdditionalExtensions and message fields."
       }
     ],
-    "fp": "Scanners hitting public IPs constantly; shared CDN or cloud IPs flagged by threat intel."
+    "fp": "Scanners hitting public IPs constantly; shared CDN or cloud IPs flagged by threat intel.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Endpoint",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-file-hash-hunt",
@@ -2270,10 +2342,11 @@ window.PLAYBOOK_ALERTS = [
         "read": "Look for files in Downloads, Temp or AppData that were extracted from the archive in the alert."
       }
     ],
-    "fp": "Installers and updates pushed by IT; known-good files flagged by a single engine."
+    "fp": "Installers and updates pushed by IT; known-good files flagged by a single engine.",
+    "platform": "Sentinel"
   },
   {
-    "cat": "Sentinel logs",
+    "cat": "Cloud apps",
     "src": "Microsoft Sentinel (Log Analytics)",
     "playbook": true,
     "id": "sentinel-darktrace-saas",
@@ -2301,12 +2374,422 @@ window.PLAYBOOK_ALERTS = [
         "read": "No rows means no onboarded endpoint connected to the IP."
       }
     ],
-    "fp": "New SaaS tools adopted by a team, backup/sync clients, and users on travel or new VPNs."
+    "fp": "New SaaS tools adopted by a team, backup/sync clients, and users on travel or new VPNs.",
+    "platform": "Sentinel"
+  },
+  {
+    "id": "sentinel-windows-logon-attacks",
+    "name": "Sentinel: Windows brute force and password spraying (SecurityEvent)",
+    "cat": "Identity",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1110",
+      "T1110.003"
+    ],
+    "playbook": true,
+    "summary": "Failed Windows logons (4625) by account and by source, password spraying, and failures that end in a success (4624).",
+    "steps": [
+      {
+        "ctx": "Repeated failures per account in 15-minute windows",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| where EventID == 4625\n| summarize FailedAttempts = count(), Sources = make_set(IpAddress, 20), Computers = make_set(Computer, 20) by TargetAccount, bin(TimeGenerated, 15m)\n| where FailedAttempts >= 10\n| order by FailedAttempts desc",
+        "read": "10+ failures in 15 minutes for one account is brute force. SubStatus 0xC000006A = wrong password, 0xC0000064 = user does not exist."
+      },
+      {
+        "ctx": "One source against many accounts (password spraying)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| where EventID == 4625\n| summarize FailedAttempts = count(), TargetedAccounts = dcount(TargetAccount), Accounts = make_set(TargetAccount, 50) by IpAddress, WorkstationName\n| where TargetedAccounts >= 5\n| order by TargetedAccounts desc",
+        "read": "A single IP or workstation failing against 5+ different accounts is spraying. Check the source in OSINT if it is external."
+      },
+      {
+        "ctx": "Failures followed by a success within 30 minutes",
+        "kql": "let Failures = SecurityEvent\n    | where TimeGenerated > ago({{LOOKBACK}}) and EventID == 4625\n    | summarize FailedCount = count(), LastFailure = max(TimeGenerated) by TargetAccount, IpAddress, Computer\n    | where FailedCount >= 5;\nlet Successes = SecurityEvent\n    | where TimeGenerated > ago({{LOOKBACK}}) and EventID == 4624\n    | summarize FirstSuccess = min(TimeGenerated) by TargetAccount, IpAddress, Computer;\nFailures\n| join kind=inner Successes on TargetAccount, IpAddress, Computer\n| where FirstSuccess between (LastFailure .. LastFailure + 30m)\n| project TargetAccount, IpAddress, Computer, FailedCount, LastFailure, FirstSuccess",
+        "read": "Any row means the password was probably guessed: reset it, check what the account did after FirstSuccess."
+      },
+      {
+        "ctx": "Account lockouts and the calling computer (4740)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{BASELINE}})\n| where EventID == 4740\n| project TimeGenerated, LockedAccount = TargetAccount, CallerComputer = TargetDomainName, DomainController = Computer\n| order by TimeGenerated desc",
+        "read": "In 4740 the caller computer (where the bad passwords came from) is stored in TargetDomainName. A stale mapped drive or phone with an old password is the usual benign cause."
+      }
+    ],
+    "fp": "Users with an old password saved on a phone or mapped drive; service accounts after a password change; vulnerability scanners."
+  },
+  {
+    "id": "sentinel-account-changes",
+    "name": "Sentinel: account and group changes on Windows / AD (SecurityEvent)",
+    "cat": "Identity",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1136.002",
+      "T1098",
+      "T1078.002"
+    ],
+    "playbook": true,
+    "summary": "New accounts, password resets, privileged group membership changes, privileged and explicit-credential logons.",
+    "steps": [
+      {
+        "ctx": "Accounts created (4720) and password resets (4724)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{BASELINE}})\n| where EventID in (4720, 4724)\n| project TimeGenerated, Activity, TargetAccount, SubjectAccount, Computer\n| order by TimeGenerated desc",
+        "read": "SubjectAccount is who did it. Accounts created outside the helpdesk / IAM process, or by a normal user account, need confirming."
+      },
+      {
+        "ctx": "Security group membership changes (privilege escalation)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{BASELINE}})\n| where EventID in (4728, 4729, 4732, 4733, 4756, 4757)\n| project TimeGenerated, Activity, Group = TargetUserName, Member = MemberName, MemberSid, ChangedBy = SubjectAccount, Computer\n| order by TimeGenerated desc",
+        "read": "4728/4732/4756 = added, 4729/4733/4757 = removed. Additions to Domain Admins, Enterprise Admins, Administrators or Backup Operators are high priority."
+      },
+      {
+        "ctx": "Privileged logons (4672) and explicit credentials (4648) for the account",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| where EventID in (4672, 4648)\n| where Account has \"{{ACCOUNT}}\" or TargetAccount has \"{{ACCOUNT}}\"\n| project TimeGenerated, Activity, Account, TargetAccount, TargetServerName, Computer, IpAddress, ProcessName\n| order by TimeGenerated desc",
+        "read": "4648 (runas / explicit credentials) to many servers from one workstation is a lateral-movement pattern."
+      }
+    ],
+    "fp": "Onboarding and offboarding by IT; group changes from IAM tools; admins using runas."
+  },
+  {
+    "id": "sentinel-suspicious-process",
+    "name": "Sentinel: suspicious process and PowerShell activity",
+    "cat": "Endpoint",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.001",
+      "T1027",
+      "T1082"
+    ],
+    "playbook": true,
+    "summary": "PowerShell use, encoded commands, discovery commands and rare process or parent-child pairs (Defender tables in Sentinel, or SecurityEvent 4688).",
+    "steps": [
+      {
+        "ctx": "Encoded or download PowerShell",
+        "kql": "DeviceProcessEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| where FileName in~ (\"powershell.exe\", \"pwsh.exe\")\n| where ProcessCommandLine has_any (\"-enc\", \"-encodedcommand\", \"FromBase64String\", \"DownloadString\", \"IEX\", \"Invoke-WebRequest\", \"-w hidden\")\n| project TimeGenerated, DeviceName, AccountName, InitiatingProcessFileName, ProcessCommandLine\n| order by TimeGenerated desc",
+        "read": "Defender tables in Sentinel use TimeGenerated. Decode -enc payloads (Base64 UTF-16LE) before deciding. A parent of winword/excel/outlook/mshta is a strong signal."
+      },
+      {
+        "ctx": "Discovery commands on a host",
+        "kql": "let SearchTerms = dynamic([\"whoami\", \"net user\", \"net group\", \"net localgroup\", \"nltest\", \"ipconfig /all\", \"systeminfo\", \"quser\", \"arp -a\"]);\nDeviceProcessEvents\n| where TimeGenerated > ago({{LOOKBACK}})\n| where DeviceName startswith \"{{DEVICE}}\"\n| where ProcessCommandLine has_any (SearchTerms)\n| project TimeGenerated, DeviceName, AccountName, InitiatingProcessFileName, ProcessCommandLine\n| order by TimeGenerated asc",
+        "read": "Several discovery commands within minutes, from a non-admin user or from a script host, is hands-on-keyboard activity."
+      },
+      {
+        "ctx": "Rare processes and parent-child pairs (environment-wide)",
+        "kql": "DeviceProcessEvents\n| where TimeGenerated > ago({{BASELINE}})\n| summarize Executions = count(), Devices = dcount(DeviceName), Example = any(ProcessCommandLine) by InitiatingProcessFileName, FileName\n| where Executions <= 3\n| order by Executions asc",
+        "read": "Low-count pairs like excel.exe -> powershell.exe or w3wp.exe -> cmd.exe are hunting leads; most rare pairs are benign installers."
+      },
+      {
+        "ctx": "Process creation from SecurityEvent 4688 (no Defender connector)",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{LOOKBACK}})\n| where EventID == 4688\n| where Computer startswith \"{{DEVICE}}\"\n| project TimeGenerated, Computer, Account, ParentProcessName, NewProcessName, CommandLine\n| order by TimeGenerated desc",
+        "read": "CommandLine is only filled if 'Include command line in process creation events' is enabled by GPO."
+      }
+    ],
+    "fp": "Admin and deployment scripts (SCCM, Intune, RMM tools) use encoded PowerShell and discovery commands."
+  },
+  {
+    "id": "sentinel-defense-evasion",
+    "name": "Sentinel: audit log cleared and logging tampered",
+    "cat": "Endpoint",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "high",
+    "mitre": [
+      "T1070.001",
+      "T1562.002"
+    ],
+    "playbook": true,
+    "summary": "Windows Security log cleared (1102), audit policy changed (4719) and event log service stopped.",
+    "steps": [
+      {
+        "ctx": "Security log cleared or audit policy changed",
+        "kql": "SecurityEvent\n| where TimeGenerated > ago({{BASELINE}})\n| where EventID in (1102, 4719)\n| project TimeGenerated, Computer, EventID, Activity, SubjectAccount, SubjectUserName\n| order by TimeGenerated desc",
+        "read": "1102 outside a documented maintenance window is high priority: attackers clear logs after acting. Look at what happened on the host just before."
+      },
+      {
+        "ctx": "System log cleared (104) and event log service stopped",
+        "kql": "Event\n| where TimeGenerated > ago({{BASELINE}})\n| where (EventLog == \"System\" and EventID == 104) or (Source == \"Service Control Manager\" and RenderedDescription has \"Windows Event Log\")\n| project TimeGenerated, Computer, EventLog, EventID, RenderedDescription\n| order by TimeGenerated desc",
+        "read": "Event needs the System log collected by the AMA/MMA data collection rule."
+      }
+    ],
+    "fp": "Re-imaging and documented log maintenance."
+  },
+  {
+    "id": "sentinel-timelines",
+    "name": "Sentinel: timeline for one user or one host",
+    "cat": "Endpoint",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Put everything a user or a host did in time order across tables, for the incident write-up.",
+    "steps": [
+      {
+        "ctx": "User timeline (sign-ins, Windows events, processes)",
+        "kql": "union isfuzzy=true\n    (SigninLogs | where TimeGenerated > ago({{LOOKBACK}}) | where UserPrincipalName =~ \"{{UPN}}\"\n        | project TimeGenerated, Source = \"SigninLogs\", Detail = strcat(AppDisplayName, \" | \", IPAddress, \" | \", ResultType)),\n    (SecurityEvent | where TimeGenerated > ago({{LOOKBACK}}) | where TargetAccount has \"{{ACCOUNT}}\"\n        | project TimeGenerated, Source = \"SecurityEvent\", Detail = strcat(EventID, \" \", Activity, \" | \", Computer)),\n    (DeviceProcessEvents | where TimeGenerated > ago({{LOOKBACK}}) | where AccountName =~ \"{{ACCOUNT}}\"\n        | project TimeGenerated, Source = \"Process\", Detail = strcat(DeviceName, \" | \", ProcessCommandLine)),\n    (OfficeActivity | where TimeGenerated > ago({{LOOKBACK}}) | where UserId =~ \"{{UPN}}\"\n        | project TimeGenerated, Source = \"OfficeActivity\", Detail = strcat(Operation, \" | \", ClientIP))\n| order by TimeGenerated asc",
+        "read": "Fill both User (UPN) and Account name. isfuzzy=true skips tables that don't exist in this workspace."
+      },
+      {
+        "ctx": "Host timeline (processes, network, files)",
+        "kql": "union isfuzzy=true\n    (DeviceProcessEvents | where TimeGenerated > ago({{LOOKBACK}}) | where DeviceName startswith \"{{DEVICE}}\"\n        | project TimeGenerated, Source = \"Process\", Detail = strcat(AccountName, \" | \", ProcessCommandLine)),\n    (DeviceNetworkEvents | where TimeGenerated > ago({{LOOKBACK}}) | where DeviceName startswith \"{{DEVICE}}\"\n        | project TimeGenerated, Source = \"Network\", Detail = strcat(InitiatingProcessFileName, \" -> \", RemoteIP, \":\", RemotePort, \" \", RemoteUrl)),\n    (DeviceFileEvents | where TimeGenerated > ago({{LOOKBACK}}) | where DeviceName startswith \"{{DEVICE}}\"\n        | project TimeGenerated, Source = \"File\", Detail = strcat(ActionType, \" | \", FolderPath))\n| order by TimeGenerated asc",
+        "read": "Narrow the look-back to the hours around the alert; a full day of a busy host is thousands of rows."
+      }
+    ],
+    "fp": "Reference entry."
+  },
+  {
+    "id": "sentinel-mailbox-rules",
+    "name": "Sentinel: inbox rules, forwarding and mailbox access (OfficeActivity)",
+    "cat": "Email",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1114.003",
+      "T1564.008",
+      "T1098.002"
+    ],
+    "playbook": true,
+    "summary": "After a suspicious sign-in: did the attacker create inbox rules, set forwarding, give mailbox permissions or read mail?",
+    "steps": [
+      {
+        "ctx": "Inbox rules and forwarding created or changed",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{BASELINE}})\n| where OfficeWorkload == \"Exchange\"\n| where Operation in~ (\"New-InboxRule\", \"Set-InboxRule\", \"UpdateInboxRules\", \"Set-Mailbox\", \"New-TransportRule\")\n| where UserId =~ \"{{UPN}}\"\n| project TimeGenerated, UserId, Operation, ClientIP, Parameters\n| order by TimeGenerated desc",
+        "read": "In Parameters look for ForwardTo, RedirectTo, ForwardingSmtpAddress, DeleteMessage, MoveToFolder (RSS Feeds, Archive) and keywords like invoice, payment, password."
+      },
+      {
+        "ctx": "Mailbox permissions granted",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{BASELINE}})\n| where Operation in~ (\"Add-MailboxPermission\", \"Add-RecipientPermission\", \"Add-MailboxFolderPermission\", \"Set-MailboxFolderPermission\")\n| project TimeGenerated, UserId, Operation, ClientIP, Parameters\n| order by TimeGenerated desc",
+        "read": "FullAccess or SendAs granted to an unexpected account can hide mailbox takeover."
+      },
+      {
+        "ctx": "Mail items accessed by the user, by IP",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Operation == \"MailItemsAccessed\"\n| where UserId =~ \"{{UPN}}\"\n| summarize Events = count(), First = min(TimeGenerated), Last = max(TimeGenerated) by ClientIP, ClientInfoString\n| order by Events desc",
+        "read": "MailItemsAccessed needs audit (Premium) licensing. An unknown IP reading mail after a risky sign-in shows what the attacker could see."
+      }
+    ],
+    "fp": "Users' own organising rules; shared mailbox delegation by IT."
+  },
+  {
+    "id": "sentinel-file-sharing",
+    "name": "Sentinel: SharePoint / OneDrive mass download and sharing",
+    "cat": "Cloud apps",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1530",
+      "T1567"
+    ],
+    "playbook": true,
+    "summary": "Bulk file downloads, anonymous links and external sharing by a user (OfficeActivity).",
+    "steps": [
+      {
+        "ctx": "File downloads by the user per hour and IP",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| where OfficeWorkload in (\"SharePoint\", \"OneDrive\")\n| where Operation in~ (\"FileDownloaded\", \"FileSyncDownloadedFull\", \"FileAccessed\")\n| where UserId =~ \"{{UPN}}\"\n| summarize Files = dcount(OfficeObjectId), Events = count() by bin(TimeGenerated, 1h), ClientIP, Operation\n| order by Files desc",
+        "read": "Hundreds of files in one hour from an unfamiliar IP is exfiltration until proven otherwise; compare with the user's normal days."
+      },
+      {
+        "ctx": "Anonymous links and external sharing",
+        "kql": "OfficeActivity\n| where TimeGenerated > ago({{BASELINE}})\n| where Operation in~ (\"AnonymousLinkCreated\", \"SharingInvitationCreated\", \"AddedToSecureLink\", \"SecureLinkCreated\", \"SharingSet\")\n| project TimeGenerated, UserId, Operation, ClientIP, OfficeObjectId, TargetUserOrGroupName\n| order by TimeGenerated desc",
+        "read": "Anonymous links on sensitive folders, or sharing to personal email domains, need the data owner to confirm."
+      }
+    ],
+    "fp": "OneDrive sync clients on new laptops download everything; project teams sharing with partners."
+  },
+  {
+    "id": "sentinel-firewall-hunting",
+    "name": "Sentinel: firewall hunting (CommonSecurityLog)",
+    "cat": "Firewall",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1071",
+      "T1048",
+      "T1046"
+    ],
+    "playbook": true,
+    "summary": "Denied traffic, unusual outbound ports, top talkers by bytes and IoC IP lists in firewall / proxy logs.",
+    "steps": [
+      {
+        "ctx": "IoC list: traffic to or from any of the IPs",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{BASELINE}})\n| where SourceIP in ({{IPS}}) or DestinationIP in ({{IPS}})\n| summarize Events = count(), Actions = make_set(DeviceAction), Ports = make_set(DestinationPort, 20), First = min(TimeGenerated), Last = max(TimeGenerated) by SourceIP, DestinationIP, DeviceVendor\n| order by Events desc",
+        "read": "Put the IoC IPs comma-separated in IP addresses. Allowed outbound traffic to an IoC needs the internal source host investigated."
+      },
+      {
+        "ctx": "Allowed outbound traffic on unusual ports",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where CommunicationDirection =~ \"Outbound\" or ipv4_is_private(SourceIP)\n| where DeviceAction !in~ (\"deny\", \"drop\", \"block\", \"reset-both\")\n| where DestinationPort !in (80, 443, 53, 123)\n| where not(ipv4_is_private(DestinationIP))\n| summarize Events = count(), Sources = dcount(SourceIP), SentBytes = sum(SentBytes) by DestinationPort, DestinationIP\n| order by Events desc",
+        "read": "Ports like 4444, 1337, 8443 to a VPS, or SSH/RDP out to the internet, are worth checking in OSINT."
+      },
+      {
+        "ctx": "Top internal senders by bytes to the internet (exfil check)",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where ipv4_is_private(SourceIP) and not(ipv4_is_private(DestinationIP))\n| summarize SentMB = round(sum(SentBytes) / 1048576.0, 1), Destinations = dcount(DestinationIP) by SourceIP\n| top 20 by SentMB desc",
+        "read": "Compare against backup and update servers. A workstation sending GBs to a single unknown destination needs escalation."
+      },
+      {
+        "ctx": "Denied inbound traffic by source country (DeviceVendor geo fields vary)",
+        "kql": "CommonSecurityLog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where DeviceAction in~ (\"deny\", \"drop\", \"block\")\n| where not(ipv4_is_private(SourceIP))\n| summarize Denied = count(), Ports = make_set(DestinationPort, 20) by SourceIP\n| top 50 by Denied desc",
+        "read": "Internet scanning is constant; look for the same source later appearing as allowed."
+      }
+    ],
+    "fp": "Backups, cloud sync and software updates create large or unusual flows."
+  },
+  {
+    "id": "sentinel-linux-syslog",
+    "name": "Sentinel: Linux SSH brute force, sudo and new users (Syslog)",
+    "cat": "Linux",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1110",
+      "T1548.003",
+      "T1136.001"
+    ],
+    "playbook": true,
+    "summary": "Linux auth logs in Syslog: failed SSH logins by source, successful logins after failures, sudo use and user creation.",
+    "steps": [
+      {
+        "ctx": "Failed SSH logins by source IP",
+        "kql": "Syslog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Facility in (\"auth\", \"authpriv\") and SyslogMessage has_any (\"Failed password\", \"Invalid user\")\n| extend SourceIP = extract(@\"from (\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\", 1, SyslogMessage), User = extract(@\"(?:for|user) (?:invalid user )?(\\S+) from\", 1, SyslogMessage)\n| summarize Failures = count(), Users = make_set(User, 20), Hosts = make_set(Computer, 10) by SourceIP\n| order by Failures desc",
+        "read": "Internet-facing SSH sees constant guessing. What matters is whether the same IP later appears in an 'Accepted' line (next step)."
+      },
+      {
+        "ctx": "Successful SSH logins (Accepted password / publickey)",
+        "kql": "Syslog\n| where TimeGenerated > ago({{LOOKBACK}})\n| where SyslogMessage has \"Accepted\"\n| extend SourceIP = extract(@\"from (\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\", 1, SyslogMessage), User = extract(@\"for (\\S+) from\", 1, SyslogMessage), Method = extract(@\"Accepted (\\S+)\", 1, SyslogMessage)\n| project TimeGenerated, Computer, User, SourceIP, Method\n| order by TimeGenerated desc",
+        "read": "An Accepted password from an IP that had many failures is a successful brute force."
+      },
+      {
+        "ctx": "sudo commands and new users",
+        "kql": "Syslog\n| where TimeGenerated > ago({{BASELINE}})\n| where (ProcessName == \"sudo\" and SyslogMessage has \"COMMAND=\") or SyslogMessage has_any (\"new user:\", \"useradd\", \"password changed\")\n| project TimeGenerated, Computer, ProcessName, SyslogMessage\n| order by TimeGenerated desc",
+        "read": "sudo to bash/sh or edits to /etc/passwd, /etc/shadow, authorized_keys are the ones to read."
+      }
+    ],
+    "fp": "Internet SSH scanners (noise unless a login succeeds); admins using sudo."
+  },
+  {
+    "id": "sentinel-azure-activity",
+    "name": "Sentinel: Azure subscription changes (role assignments, deletes, keys)",
+    "cat": "Cloud infra",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1098",
+      "T1485",
+      "T1552.005"
+    ],
+    "playbook": true,
+    "summary": "AzureActivity: who granted roles, deleted resources, listed storage keys or created VMs.",
+    "steps": [
+      {
+        "ctx": "Role assignments created",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{BASELINE}})\n| where OperationNameValue =~ \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\" and ActivityStatusValue =~ \"Success\"\n| project TimeGenerated, Caller, CallerIpAddress, ResourceGroup, _ResourceId, Properties\n| order by TimeGenerated desc",
+        "read": "Owner / Contributor / User Access Administrator granted by an unexpected caller or from an unknown IP is high priority."
+      },
+      {
+        "ctx": "Resources deleted and storage keys listed",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| where OperationNameValue endswith \"/DELETE\" or OperationNameValue =~ \"MICROSOFT.STORAGE/STORAGEACCOUNTS/LISTKEYS/ACTION\"\n| where ActivityStatusValue =~ \"Success\"\n| summarize Operations = count(), Resources = make_set(_ResourceId, 20) by Caller, CallerIpAddress, OperationNameValue\n| order by Operations desc",
+        "read": "Mass deletes are destructive attacks; ListKeys gives full access to storage data."
+      },
+      {
+        "ctx": "All operations by a caller",
+        "kql": "AzureActivity\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Caller =~ \"{{UPN}}\" or CallerIpAddress == \"{{IP}}\"\n| summarize Operations = count(), First = min(TimeGenerated), Last = max(TimeGenerated) by Caller, CallerIpAddress, OperationNameValue, ActivityStatusValue\n| order by Last desc",
+        "read": "Fill User (UPN) or IP. Service principals appear as an object ID in Caller."
+      }
+    ],
+    "fp": "Infrastructure-as-code pipelines (Terraform, DevOps service principals)."
+  },
+  {
+    "id": "sentinel-aws-cloudtrail",
+    "name": "Sentinel: AWS CloudTrail (console logins, IAM changes, root use)",
+    "cat": "Cloud infra",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1078.004",
+      "T1098.001",
+      "T1562.008"
+    ],
+    "playbook": true,
+    "summary": "AWSCloudTrail: console logins without MFA, root account use, new access keys and logging being disabled.",
+    "steps": [
+      {
+        "ctx": "Console logins (MFA, result, source)",
+        "kql": "AWSCloudTrail\n| where TimeGenerated > ago({{LOOKBACK}})\n| where EventName == \"ConsoleLogin\"\n| extend MFA = tostring(parse_json(AdditionalEventData).MFAUsed), Result = tostring(parse_json(ResponseElements).ConsoleLogin)\n| project TimeGenerated, UserIdentityType, UserIdentityArn, SourceIpAddress, MFA, Result, UserAgent\n| order by TimeGenerated desc",
+        "read": "Root logins and successful logins with MFA = No are the first to confirm."
+      },
+      {
+        "ctx": "IAM changes: access keys, users, policies",
+        "kql": "AWSCloudTrail\n| where TimeGenerated > ago({{BASELINE}})\n| where EventName in (\"CreateAccessKey\", \"CreateUser\", \"AttachUserPolicy\", \"PutUserPolicy\", \"CreateLoginProfile\", \"UpdateAssumeRolePolicy\", \"AddUserToGroup\")\n| project TimeGenerated, EventName, UserIdentityArn, SourceIpAddress, RequestParameters, ErrorCode\n| order by TimeGenerated desc",
+        "read": "New access keys or AdministratorAccess attached from an unknown IP is a takeover pattern."
+      },
+      {
+        "ctx": "Logging and guardrails disabled",
+        "kql": "AWSCloudTrail\n| where TimeGenerated > ago({{BASELINE}})\n| where EventName in (\"StopLogging\", \"DeleteTrail\", \"UpdateTrail\", \"DeleteDetector\", \"DisableSecurityHub\", \"PutBucketPublicAccessBlock\", \"DeleteFlowLogs\")\n| project TimeGenerated, EventName, UserIdentityArn, SourceIpAddress, RequestParameters",
+        "read": "Any successful row outside a change window is high priority."
+      }
+    ],
+    "fp": "Automation roles and approved admin changes."
+  },
+  {
+    "id": "sentinel-waf",
+    "name": "Sentinel: Web Application Firewall / Application Gateway hits",
+    "cat": "Web & proxy",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1190",
+      "T1595.002"
+    ],
+    "playbook": true,
+    "summary": "Azure Application Gateway / Front Door WAF: matched and blocked rules by client IP and URL.",
+    "steps": [
+      {
+        "ctx": "WAF matches by client IP and rule (resource-specific table)",
+        "kql": "AGWFirewallLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| summarize Hits = count(), Actions = make_set(Action), URIs = make_set(RequestUri, 20) by ClientIp, RuleId, Message\n| order by Hits desc",
+        "read": "Blocked = WAF stopped it. Matched/Detected in detection mode means it reached the app; check the response in AGWAccessLogs."
+      },
+      {
+        "ctx": "Requests from the IP (AzureDiagnostics, legacy mode)",
+        "kql": "AzureDiagnostics\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Category in (\"ApplicationGatewayFirewallLog\", \"ApplicationGatewayAccessLog\", \"FrontDoorWebApplicationFirewallLog\")\n| where clientIp_s == \"{{IP}}\" or clientIP_s == \"{{IP}}\"\n| project TimeGenerated, Category, clientIp_s, clientIP_s, requestUri_s, ruleId_s, action_s, httpStatus_d, Message\n| order by TimeGenerated desc",
+        "read": "httpStatus 200 on exploit-looking paths (../, /etc/passwd, ${jndi:, UNION SELECT) needs the app owner involved."
+      }
+    ],
+    "fp": "Vulnerability scanners run by the client; false positives on legitimate POST bodies."
+  },
+  {
+    "id": "sentinel-threat-intel",
+    "name": "Sentinel: threat intelligence matches (ThreatIntelIndicators)",
+    "cat": "Threat intel",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1071"
+    ],
+    "playbook": true,
+    "summary": "Look up an IoC in the workspace TI feed and match active TI IPs against sign-ins and firewall logs.",
+    "steps": [
+      {
+        "ctx": "Is the IoC in the TI feed?",
+        "kql": "ThreatIntelIndicators\n| where TimeGenerated > ago({{BASELINE}})\n| where ObservableValue has \"{{IP}}\" or ObservableValue has \"{{DOMAIN}}\"\n| summarize arg_max(TimeGenerated, *) by Id\n| project TimeGenerated, ObservableKey, ObservableValue, Confidence, IsActive, ValidUntil, SourceSystem, Tags\n| order by TimeGenerated desc",
+        "read": "Older workspaces use ThreatIntelligenceIndicator (NetworkIP, DomainName, Active columns). IsActive false or an old ValidUntil means the indicator expired."
+      },
+      {
+        "ctx": "Active TI IPs seen in sign-ins and firewall logs",
+        "kql": "let TI = ThreatIntelIndicators\n    | where TimeGenerated > ago(30d) and IsActive == true and ObservableKey has \"ipv4\"\n    | summarize arg_max(TimeGenerated, *) by ObservableValue\n    | project TIIP = ObservableValue, Confidence, SourceSystem;\nunion isfuzzy=true\n    (SigninLogs | where TimeGenerated > ago({{LOOKBACK}}) | project TimeGenerated, Source = \"SigninLogs\", IP = IPAddress, Who = UserPrincipalName, Result = ResultType),\n    (CommonSecurityLog | where TimeGenerated > ago({{LOOKBACK}}) | project TimeGenerated, Source = \"Firewall\", IP = DestinationIP, Who = SourceIP, Result = DeviceAction)\n| join kind=inner TI on $left.IP == $right.TIIP\n| summarize Hits = count(), Last = max(TimeGenerated) by Source, IP, Who, Result, Confidence, SourceSystem\n| order by Hits desc",
+        "read": "Successful sign-ins (Result 0) or allowed firewall traffic to a TI IP are the cases to escalate."
+      }
+    ],
+    "fp": "Low-confidence or expired indicators; shared cloud IPs."
   },
   {
     "id": "cs-host-activity",
     "name": "CrowdStrike: host activity (processes, network, DNS, files)",
-    "cat": "CrowdStrike",
+    "cat": "Endpoint",
     "src": "CrowdStrike Falcon (LogScale CQL)",
     "sev": "info",
     "mitre": [
@@ -2342,12 +2825,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "UserLogonFailed2 bursts followed by UserLogon for the same account is a brute-force success. LogonType 10 is RDP."
       }
     ],
-    "fp": "Software updaters and IT management agents start many processes and connections; compare with other hosts in the same role."
+    "fp": "Software updaters and IT management agents start many processes and connections; compare with other hosts in the same role.",
+    "platform": "CrowdStrike"
   },
   {
     "id": "cs-ioc-hunt",
     "name": "CrowdStrike: hunt an IoC across all hosts (hash, IP, domain)",
-    "cat": "CrowdStrike",
+    "cat": "Endpoint",
     "src": "CrowdStrike Falcon (LogScale CQL)",
     "sev": "info",
     "mitre": [],
@@ -2370,12 +2854,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Matches the domain and its subdomains. Put the domain in Domain / URL fragment."
       }
     ],
-    "fp": "Shared infrastructure (CDNs, cloud providers) appears on many hosts; check the IP owner in OSINT first."
+    "fp": "Shared infrastructure (CDNs, cloud providers) appears on many hosts; check the IP owner in OSINT first.",
+    "platform": "CrowdStrike"
   },
   {
     "id": "cs-detections",
     "name": "CrowdStrike: detections and alerts overview",
-    "cat": "CrowdStrike",
+    "cat": "SIEM health",
     "src": "CrowdStrike Falcon (LogScale CQL)",
     "sev": "info",
     "mitre": [],
@@ -2393,12 +2878,218 @@ window.PLAYBOOK_ALERTS = [
         "read": "Several different detections on one host in a short time usually means a real intrusion rather than one noisy rule."
       }
     ],
-    "fp": "Reference entry, not an alert."
+    "fp": "Reference entry, not an alert.",
+    "platform": "CrowdStrike"
+  },
+  {
+    "id": "cs-suspicious-process",
+    "name": "CrowdStrike: Office spawning scripts, encoded PowerShell and LOLBins",
+    "cat": "Endpoint",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.001",
+      "T1204.002",
+      "T1218"
+    ],
+    "playbook": true,
+    "summary": "Common initial-access and execution patterns in ProcessRollup2: Office apps launching script engines, encoded PowerShell, and living-off-the-land binaries.",
+    "steps": [
+      {
+        "ctx": "Office applications spawning script engines",
+        "kql": "#event_simpleName=ProcessRollup2\n| ParentBaseFileName=/^(winword|excel|outlook|powerpnt|onenote)\\.exe$/i\n| FileName=/^(powershell|pwsh|cmd|wscript|cscript|mshta|rundll32|regsvr32)\\.exe$/i\n| table([@timestamp, ComputerName, UserName, ParentBaseFileName, FileName, CommandLine])\n| sort(@timestamp, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Any result is high priority: it is the classic malicious-document pattern. Check the document's origin (email, download)."
+      },
+      {
+        "ctx": "Encoded PowerShell, with the payload extracted",
+        "kql": "#event_simpleName=ProcessRollup2 FileName=/^(powershell|pwsh)\\.exe$/i\n| CommandLine=/\\s-(e|en|enc|enco|encodedcommand)\\s/i\n| regex(\"(?i)-(?:e|en|enc|encodedcommand)\\s+(?<EncodedPayload>[A-Za-z0-9+/=]{20,})\", field=CommandLine, strict=false)\n| table([@timestamp, ComputerName, UserName, ParentBaseFileName, EncodedPayload, CommandLine])\n| sort(@timestamp, order=desc)",
+        "read": "Decode EncodedPayload as Base64 UTF-16LE (CyberChef: From Base64 -> Decode text UTF-16LE)."
+      },
+      {
+        "ctx": "LOLBins with URLs or download flags",
+        "kql": "#event_simpleName=ProcessRollup2\n| FileName=/^(certutil|bitsadmin|mshta|rundll32|regsvr32|curl|wget)\\.exe$/i\n| CommandLine=/(http|https|ftp):\\/\\/|urlcache|-split|\\/transfer|scrobj/i\n| groupBy([ComputerName, UserName, FileName, CommandLine], function=[count(), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "certutil -urlcache, bitsadmin /transfer and regsvr32 /i:http (Squiblydoo) are download-and-execute tricks."
+      }
+    ],
+    "fp": "Office add-ins and macros used by finance teams; IT scripts using certutil or curl."
+  },
+  {
+    "id": "cs-persistence",
+    "name": "CrowdStrike: persistence (services, scheduled tasks, Run keys)",
+    "cat": "Endpoint",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1543.003",
+      "T1053.005",
+      "T1547.001"
+    ],
+    "playbook": true,
+    "summary": "New services, scheduled tasks and registry autoruns created on a host.",
+    "steps": [
+      {
+        "ctx": "Scheduled tasks and services created on the host",
+        "kql": "#event_simpleName=/^(ScheduledTaskRegistered|ServiceStarted|ModifyServiceBinary)$/ ComputerName=\"{{DEVICE}}\"\n| table([@timestamp, #event_simpleName, TaskName, TaskExecCommand, ServiceDisplayName, ImageFileName, UserName])\n| sort(@timestamp, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Tasks or services running from AppData, Temp, ProgramData or Public, or launching powershell/cmd, are suspicious."
+      },
+      {
+        "ctx": "Run / RunOnce registry autoruns",
+        "kql": "#event_simpleName=/^(AsepValueUpdate|RegGenericValueUpdate)$/ ComputerName=\"{{DEVICE}}\"\n| RegObjectName=/\\\\CurrentVersion\\\\(Run|RunOnce)/i\n| table([@timestamp, RegObjectName, RegValueName, RegStringValue, UserName])\n| sort(@timestamp, order=desc)",
+        "read": "Values pointing to scripts or binaries in user-writable folders are the common malware persistence."
+      }
+    ],
+    "fp": "Software updaters (Google, Adobe, Teams) create tasks and Run keys."
+  },
+  {
+    "id": "cs-identity-logons",
+    "name": "CrowdStrike: brute force and NTLM lateral movement",
+    "cat": "Identity",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1110",
+      "T1021.002",
+      "T1550.002"
+    ],
+    "playbook": true,
+    "summary": "Failed logons per account and source, and one account using NTLM network logons across many hosts.",
+    "steps": [
+      {
+        "ctx": "Failed logons by account and source",
+        "kql": "#event_simpleName=UserLogonFailed2\n| groupBy([UserName, RemoteAddressIP4], function=[count(as=Failures), count(field=ComputerName, distinct=true, as=Hosts), max(@timestamp, as=Last)])\n| Failures > 10\n| sort(Failures, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Many failures from one source against one user is brute force; one source against many users is spraying. Check for a later UserLogon for the same pair."
+      },
+      {
+        "ctx": "Logons for one user across hosts",
+        "kql": "#event_simpleName=UserLogon UserName=\"{{ACCOUNT}}\"\n| groupBy([ComputerName, LogonType, RemoteAddressIP4], function=[count(), min(@timestamp, as=First), max(@timestamp, as=Last)])\n| sort(Last, order=desc)",
+        "read": "LogonType 10 = RDP, 3 = network, 2 = console. New hosts for this user around the alert time show lateral movement."
+      },
+      {
+        "ctx": "NTLM network logons from one source to 3+ hosts",
+        "kql": "#event_simpleName=UserLogon LogonType=3 AuthenticationPackage=\"NTLM\"\n| UserName!=/\\$$/\n| groupBy([UserName, RemoteAddressIP4], function=[count(field=ComputerName, distinct=true, as=TargetHosts), collect([ComputerName])])\n| TargetHosts >= 3\n| sort(TargetHosts, order=desc)",
+        "read": "Pass-the-hash and PsExec sweeps look like this. Exclude known admin jump hosts and vulnerability scanners."
+      }
+    ],
+    "fp": "Scanners, monitoring tools and admin jump boxes authenticate to many hosts."
+  },
+  {
+    "id": "cs-network-dns",
+    "name": "CrowdStrike: DNS tunnelling and outbound RDP/SMB/SSH",
+    "cat": "DNS",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071.004",
+      "T1048",
+      "T1021"
+    ],
+    "playbook": true,
+    "summary": "High DNS query volume per domain, long subdomains, and remote-access protocols going out to the internet.",
+    "steps": [
+      {
+        "ctx": "High DNS query volume per domain",
+        "kql": "#event_simpleName=DnsRequest\n| groupBy([DomainName], function=[count(as=QueryCount), count(field=ComputerName, distinct=true, as=Hosts)])\n| QueryCount > 100\n| sort(QueryCount, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Mostly CDNs and Microsoft. A rare domain queried thousands of times by one host, with random subdomains, suggests DNS tunnelling or beaconing."
+      },
+      {
+        "ctx": "Very long DNS names (tunnelling)",
+        "kql": "#event_simpleName=DnsRequest\n| len := length(DomainName)\n| len > 60\n| groupBy([ComputerName, DomainName], function=count())\n| sort(_count, order=desc)",
+        "read": "Long hex/base32-looking labels under one parent domain are data being encoded into DNS."
+      },
+      {
+        "ctx": "Outbound RDP, SMB, SSH or WinRM to public IPs",
+        "kql": "#event_simpleName=NetworkConnectIP4 RemotePort=/^(22|445|3389|5985|5986)$/\n| !cidr(RemoteAddressIP4, subnet=[\"10.0.0.0/8\", \"172.16.0.0/12\", \"192.168.0.0/16\", \"127.0.0.0/8\"])\n| groupBy([ComputerName, RemoteAddressIP4, RemotePort], function=[count(), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "Workstations should rarely open these protocols to the internet; check the destination in OSINT."
+      }
+    ],
+    "fp": "Security tools and CDNs generate heavy DNS; admins using SSH to cloud servers."
+  },
+  {
+    "id": "cs-sensor-health",
+    "name": "CrowdStrike: sensors reporting and event volume",
+    "cat": "SIEM health",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Which hosts stopped sending data and which event types are in the data.",
+    "steps": [
+      {
+        "ctx": "Last time each host sent data",
+        "kql": "#event_simpleName=SensorHeartbeat\n| groupBy([ComputerName], function=max(@timestamp, as=LastSeen))\n| sort(LastSeen, order=asc)\n| LastSeenReadable := formatTime(\"%Y-%m-%d %H:%M\", field=LastSeen)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). Hosts at the top have been quiet the longest: offline, uninstalled sensor, or tampering. Set a time range of at least 7 days."
+      },
+      {
+        "ctx": "Event types in the data",
+        "kql": "groupBy([#event_simpleName], function=count())\n| sort(_count, order=desc)\n| head(50)",
+        "read": "Use it to learn which event names exist in this tenant before writing a hunt."
+      }
+    ],
+    "fp": "Laptops off the network and decommissioned hosts."
+  },
+  {
+    "id": "cs-linux",
+    "name": "CrowdStrike: Linux reverse shells, droppers and persistence",
+    "cat": "Linux",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.004",
+      "T1105",
+      "T1053.003"
+    ],
+    "playbook": true,
+    "summary": "Linux sensor process events: curl/wget piped to shell, /dev/tcp reverse shells, cron and authorized_keys changes.",
+    "steps": [
+      {
+        "ctx": "Reverse shells and download-and-execute",
+        "kql": "#event_simpleName=ProcessRollup2 event_platform=Lin\n| CommandLine=/(\\/dev\\/tcp\\/|nc\\s+-e|ncat\\s|bash\\s+-i|mkfifo|curl[^|]*\\|\\s*(ba)?sh|wget[^|]*\\|\\s*(ba)?sh|base64\\s+-d)/i\n| table([@timestamp, ComputerName, UserName, ParentBaseFileName, CommandLine])\n| sort(@timestamp, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). A web server user (www-data, nginx, apache, tomcat) running these means the application was exploited."
+      },
+      {
+        "ctx": "Cron, sudoers and SSH key changes",
+        "kql": "#event_simpleName=ProcessRollup2 event_platform=Lin\n| CommandLine=/(crontab|\\/etc\\/cron|\\/etc\\/sudoers|authorized_keys|useradd|usermod)/i\n| table([@timestamp, ComputerName, UserName, CommandLine])\n| sort(@timestamp, order=desc)",
+        "read": "Persistence on Linux. Confirm with the server owner."
+      }
+    ],
+    "fp": "Configuration management and admin maintenance."
+  },
+  {
+    "id": "cs-threat-intel",
+    "name": "CrowdStrike: match connections and DNS against Falcon threat intel",
+    "cat": "Threat intel",
+    "platform": "CrowdStrike",
+    "src": "CrowdStrike Falcon (LogScale CQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071"
+    ],
+    "playbook": true,
+    "summary": "Use the NG-SIEM ioc:lookup() function to flag IPs and domains that CrowdStrike intelligence knows about.",
+    "steps": [
+      {
+        "ctx": "Outbound connections to known-bad IPs",
+        "kql": "#event_simpleName=NetworkConnectIP4\n| ioc:lookup(field=[RemoteAddressIP4], type=\"ip_address\", confidenceThreshold=\"high\")\n| groupBy([ComputerName, RemoteAddressIP4, ioc[0].labels], function=[count(), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "CrowdStrike Falcon LogScale / Next-Gen SIEM query (CQL), not KQL. Set the time range in the Falcon search bar (the Look-back field isn't used). ioc:lookup needs Falcon Intelligence / Next-Gen SIEM. Rows mean a host talked to an IP CrowdStrike rates high confidence."
+      },
+      {
+        "ctx": "DNS lookups of known-bad domains",
+        "kql": "#event_simpleName=DnsRequest\n| ioc:lookup(field=[DomainName], type=\"domain\", confidenceThreshold=\"high\")\n| groupBy([ComputerName, DomainName], function=[count(), max(@timestamp, as=Last)])\n| sort(_count, order=desc)",
+        "read": "Follow up with the process that made the lookup (ContextProcessId) in host activity."
+      }
+    ],
+    "fp": "Sinkholed or expired indicators."
   },
   {
     "id": "splunk-data-overview",
     "name": "Splunk: what data is in this Splunk? (indexes, sourcetypes, hosts)",
-    "cat": "Splunk",
+    "cat": "SIEM health",
     "src": "Splunk (SPL)",
     "sev": "info",
     "mitre": [],
@@ -2416,12 +3107,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "A host that went quiet may be off, isolated, or have its forwarder stopped by an attacker."
       }
     ],
-    "fp": "Reference entry, not an alert."
+    "fp": "Reference entry, not an alert.",
+    "platform": "Splunk"
   },
   {
     "id": "splunk-windows-auth",
     "name": "Splunk: Windows logons (failed and successful)",
-    "cat": "Splunk",
+    "cat": "Identity",
     "src": "Splunk (SPL) – WinEventLog:Security",
     "sev": "info",
     "mitre": [
@@ -2442,12 +3134,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the account in Account name. Logon type 10 is RDP, 3 network. A success from a source that also had many failures means the brute force worked."
       }
     ],
-    "fp": "Service accounts with expired passwords produce constant 4625s; check the account owner."
+    "fp": "Service accounts with expired passwords produce constant 4625s; check the account owner.",
+    "platform": "Splunk"
   },
   {
     "id": "splunk-process",
     "name": "Splunk: process creation (Sysmon 1 / Windows 4688)",
-    "cat": "Splunk",
+    "cat": "Endpoint",
     "src": "Splunk (SPL) – Sysmon / WinEventLog",
     "sev": "info",
     "mitre": [
@@ -2468,12 +3161,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Each row is a host and user that used a built-in Windows tool in a way attackers often do. Check the parent process and decode -enc strings."
       }
     ],
-    "fp": "IT scripts and software installers use PowerShell and certutil legitimately; compare with known admin accounts."
+    "fp": "IT scripts and software installers use PowerShell and certutil legitimately; compare with known admin accounts.",
+    "platform": "Splunk"
   },
   {
     "id": "splunk-network",
     "name": "Splunk: firewall / network traffic for an IP",
-    "cat": "Splunk",
+    "cat": "Firewall",
     "src": "Splunk (SPL) – CIM Network_Traffic",
     "sev": "info",
     "mitre": [
@@ -2494,12 +3188,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Use when the data model isn't set up. Adjust the sourcetypes to your firewall."
       }
     ],
-    "fp": "Reference entry; CDN and cloud IPs show up everywhere, so check the owner in OSINT first."
+    "fp": "Reference entry; CDN and cloud IPs show up everywhere, so check the owner in OSINT first.",
+    "platform": "Splunk"
   },
   {
     "id": "splunk-linux-ssh",
     "name": "Splunk: Linux SSH logons (brute force and success)",
-    "cat": "Splunk",
+    "cat": "Linux",
     "src": "Splunk (SPL) – linux_secure",
     "sev": "info",
     "mitre": [
@@ -2520,12 +3215,318 @@ window.PLAYBOOK_ALERTS = [
         "read": "Any Accepted row from an IP that also had many failures means the brute force succeeded."
       }
     ],
-    "fp": "Internet-facing SSH gets constant scanning; failures alone are usually noise."
+    "fp": "Internet-facing SSH gets constant scanning; failures alone are usually noise.",
+    "platform": "Splunk"
+  },
+  {
+    "id": "splunk-suspicious-powershell",
+    "name": "Splunk: suspicious PowerShell and discovery commands",
+    "cat": "Endpoint",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.001",
+      "T1027",
+      "T1082"
+    ],
+    "playbook": true,
+    "summary": "Encoded or download PowerShell and discovery commands from Windows 4688, Sysmon 1 and PowerShell 4104 script block logs.",
+    "steps": [
+      {
+        "ctx": "Encoded or download PowerShell (4688 / Sysmon 1)",
+        "kql": "index=* (EventCode=4688 OR (sourcetype=\"XmlWinEventLog:Microsoft-Windows-Sysmon/Operational\" EventCode=1)) earliest=-{{LOOKBACK}}\n| eval cmd=coalesce(CommandLine, Process_Command_Line)\n| search cmd=\"*powershell*\" (cmd=\"*-enc*\" OR cmd=\"*FromBase64String*\" OR cmd=\"*DownloadString*\" OR cmd=\"*IEX*\" OR cmd=\"*-w hidden*\")\n| table _time, host, user, ParentImage, cmd\n| sort - _time",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Field names differ between the Windows TA (Process_Command_Line) and Sysmon (CommandLine); coalesce covers both."
+      },
+      {
+        "ctx": "PowerShell script block content (4104)",
+        "kql": "index=* sourcetype=\"XmlWinEventLog:Microsoft-Windows-PowerShell/Operational\" EventCode=4104 earliest=-{{LOOKBACK}}\n| search ScriptBlockText=\"*Invoke-Mimikatz*\" OR ScriptBlockText=\"*Net.WebClient*\" OR ScriptBlockText=\"*AmsiUtils*\" OR ScriptBlockText=\"*FromBase64String*\"\n| table _time, host, UserID, ScriptBlockText\n| sort - _time",
+        "read": "4104 shows the decoded script, so it catches what the command line hides. Needs script block logging enabled."
+      },
+      {
+        "ctx": "Discovery commands on one host",
+        "kql": "index=* (EventCode=4688 OR EventCode=1) host=\"{{DEVICE}}\" earliest=-{{LOOKBACK}}\n| eval cmd=coalesce(CommandLine, Process_Command_Line)\n| search cmd=\"*whoami*\" OR cmd=\"*net user*\" OR cmd=\"*net group*\" OR cmd=\"*nltest*\" OR cmd=\"*systeminfo*\" OR cmd=\"*ipconfig /all*\"\n| table _time, host, user, cmd\n| sort _time",
+        "read": "Several discovery commands in a few minutes is hands-on-keyboard activity."
+      }
+    ],
+    "fp": "Admin, SCCM and RMM scripts."
+  },
+  {
+    "id": "splunk-account-changes",
+    "name": "Splunk: account changes, lockouts and log clearing",
+    "cat": "Identity",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1136",
+      "T1098",
+      "T1070.001"
+    ],
+    "playbook": true,
+    "summary": "New accounts, privileged group additions, lockouts and Security log cleared on Windows.",
+    "steps": [
+      {
+        "ctx": "Accounts created and added to groups",
+        "kql": "index=* sourcetype=\"WinEventLog:Security\" EventCode IN (4720, 4728, 4732, 4756) earliest=-{{BASELINE}}\n| table _time, host, EventCode, name, src_user, user, Group_Name\n| sort - _time",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. src_user made the change; user is the account affected. Additions to Domain Admins / Administrators are high priority."
+      },
+      {
+        "ctx": "Account lockouts and the caller computer",
+        "kql": "index=* sourcetype=\"WinEventLog:Security\" EventCode=4740 earliest=-{{LOOKBACK}}\n| stats count, values(Caller_Computer_Name) as caller, latest(_time) as last by user\n| convert ctime(last)\n| sort - count",
+        "read": "Caller_Computer_Name is where the bad passwords came from."
+      },
+      {
+        "ctx": "Security log cleared (1102)",
+        "kql": "index=* (sourcetype=\"WinEventLog:Security\" EventCode=1102) OR (sourcetype=\"WinEventLog:System\" EventCode=104) earliest=-{{BASELINE}}\n| table _time, host, EventCode, user, Message",
+        "read": "Log clearing outside maintenance is a strong sign of an intruder covering tracks."
+      }
+    ],
+    "fp": "Helpdesk onboarding and IAM tools."
+  },
+  {
+    "id": "splunk-azure-signins",
+    "name": "Splunk: Entra ID / Microsoft 365 sign-ins for a user",
+    "cat": "Identity",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1078.004"
+    ],
+    "playbook": true,
+    "summary": "Sign-ins from the Microsoft Azure / O365 add-ons: by user, by country, and failures by IP.",
+    "steps": [
+      {
+        "ctx": "Sign-ins for the user (Entra ID)",
+        "kql": "index=* sourcetype=\"azure:aad:signin\" userPrincipalName=\"{{UPN}}\" earliest=-{{LOOKBACK}}\n| table _time, userPrincipalName, ipAddress, location.countryOrRegion, location.city, appDisplayName, clientAppUsed, status.errorCode, status.failureReason\n| sort - _time",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. status.errorCode 0 = success. Sourcetypes vary: try sourcetype=\"o365:management:activity\" Operation=UserLoggedIn if this returns nothing."
+      },
+      {
+        "ctx": "Successful sign-ins outside a country",
+        "kql": "index=* sourcetype=\"azure:aad:signin\" userPrincipalName=\"{{UPN}}\" status.errorCode=0 earliest=-{{BASELINE}}\n| rename location.countryOrRegion as country\n| search NOT country IN ({{COUNTRIES}})\n| stats count, values(ipAddress) as ips, min(_time) as first, max(_time) as last by country\n| convert ctime(first) ctime(last)",
+        "read": "Put the home country codes in Countries (e.g. AU)."
+      },
+      {
+        "ctx": "Failed sign-ins by source IP (spraying)",
+        "kql": "index=* sourcetype=\"azure:aad:signin\" status.errorCode!=0 earliest=-{{LOOKBACK}}\n| stats count as failures, dc(userPrincipalName) as users, values(status.failureReason) as reasons by ipAddress\n| where users > 5\n| sort - failures",
+        "read": "One IP failing against many users is password spraying; check for any success from the same IP."
+      }
+    ],
+    "fp": "Travel and VPN egress; Microsoft service IPs."
+  },
+  {
+    "id": "splunk-o365-email",
+    "name": "Splunk: Microsoft 365 inbox rules and message trace",
+    "cat": "Email",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1114.003",
+      "T1566"
+    ],
+    "playbook": true,
+    "summary": "Inbox rules and forwarding from the O365 management activity feed, and who received mail from a sender.",
+    "steps": [
+      {
+        "ctx": "Inbox rules and forwarding changes for the user",
+        "kql": "index=* sourcetype=\"o365:management:activity\" Workload=Exchange Operation IN (\"New-InboxRule\", \"Set-InboxRule\", \"UpdateInboxRules\", \"Set-Mailbox\") UserId=\"{{UPN}}\" earliest=-{{BASELINE}}\n| table _time, UserId, Operation, ClientIP, Parameters{}.Name, Parameters{}.Value\n| sort - _time",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Look for ForwardTo, RedirectTo, ForwardingSmtpAddress, DeleteMessage or MoveToFolder."
+      },
+      {
+        "ctx": "Who received mail from the sender (message trace)",
+        "kql": "index=* sourcetype=\"o365:reporting:messagetrace\" SenderAddress=\"{{SENDER}}\" earliest=-{{BASELINE}}\n| stats count, values(Subject) as subjects, values(Status) as status by RecipientAddress\n| sort - count",
+        "read": "Needs the Microsoft 365 add-on message trace input. Status Delivered means it reached the mailbox."
+      }
+    ],
+    "fp": "Users' own rules; newsletters."
+  },
+  {
+    "id": "splunk-dns-web",
+    "name": "Splunk: DNS, web proxy and threat-intel matches",
+    "cat": "Web & proxy",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071",
+      "T1595"
+    ],
+    "playbook": true,
+    "summary": "Top DNS queries, scanner user agents, rare outbound destinations, and firewall hits against a threat-intel index.",
+    "steps": [
+      {
+        "ctx": "Hosts that looked up the domain",
+        "kql": "index=* (sourcetype=*dns* OR sourcetype=\"stream:dns\") query=\"*{{DOMAIN}}*\" earliest=-{{BASELINE}}\n| stats count, min(_time) as first, max(_time) as last by src, query\n| convert ctime(first) ctime(last)\n| sort - count",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Each src is a host that resolved the domain; follow up with its proxy/firewall traffic."
+      },
+      {
+        "ctx": "Scanner and attack-tool user agents on web servers",
+        "kql": "index=* sourcetype=access_combined earliest=-{{LOOKBACK}}\n| regex useragent=\"(?i)(nikto|sqlmap|nmap|masscan|zgrab|nuclei|dirbuster|gobuster|metasploit)\"\n| stats count, values(uri_path) as paths by clientip, useragent\n| sort - count",
+        "read": "Field may be user_agent or http_user_agent in your sourcetype. Scanning alone is noise; a 200 response on exploit paths is not."
+      },
+      {
+        "ctx": "Rare outbound destinations (few connections)",
+        "kql": "index=* sourcetype=*firewall* action=allowed earliest=-{{LOOKBACK}}\n| stats count, values(src_ip) as sources by dest_ip, dest_port\n| where count < 5\n| sort count",
+        "read": "Rare destinations from servers, or on odd ports, are the leads; check in OSINT."
+      },
+      {
+        "ctx": "Firewall traffic matching a threat-intel index",
+        "kql": "index=* sourcetype=*firewall* earliest=-{{LOOKBACK}}\n    [search index=threat_intel earliest=-30d | fields ip | rename ip as dest_ip]\n| stats count, values(action) as action by src_ip, dest_ip\n| sort - count",
+        "read": "Change index=threat_intel and the field name to your TI lookup. With Enterprise Security, use the Threat Activity dashboard instead."
+      }
+    ],
+    "fp": "Shared CDN and cloud IPs in threat feeds."
+  },
+  {
+    "id": "splunk-data-health",
+    "name": "Splunk: hosts and sources that stopped sending",
+    "cat": "SIEM health",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Find hosts and sourcetypes that went quiet, using tstats (fast).",
+    "steps": [
+      {
+        "ctx": "Hosts silent for more than 24 hours",
+        "kql": "| tstats latest(_time) as last where index=* earliest=-{{BASELINE}} by host, index\n| where last < relative_time(now(), \"-24h\")\n| eval last=strftime(last, \"%Y-%m-%d %H:%M\")\n| sort last",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Each row is a host that sent data in the baseline window but not in the last day: forwarder down, host off, or logging tampered."
+      },
+      {
+        "ctx": "Daily event count per sourcetype",
+        "kql": "| tstats count where index=* earliest=-{{BASELINE}} by _time span=1d, sourcetype\n| timechart span=1d sum(count) by sourcetype limit=15",
+        "read": "Drops to zero mean a broken input; spikes may be an attack or a misconfiguration."
+      }
+    ],
+    "fp": "Decommissioned hosts."
+  },
+  {
+    "id": "splunk-linux-host",
+    "name": "Splunk: Linux sudo, new users and suspicious commands",
+    "cat": "Linux",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1548.003",
+      "T1136.001",
+      "T1059.004"
+    ],
+    "playbook": true,
+    "summary": "linux_secure and auditd: sudo usage, user creation and reverse-shell style commands.",
+    "steps": [
+      {
+        "ctx": "sudo commands by user and host",
+        "kql": "index=* sourcetype=linux_secure \"COMMAND=\" earliest=-{{LOOKBACK}}\n| rex \"sudo:\\s+(?<sudo_user>\\S+)\\s+:.*COMMAND=(?<sudo_cmd>.*)$\"\n| stats count, values(sudo_cmd) as commands by host, sudo_user\n| sort - count",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. sudo to sh/bash, or edits to /etc/shadow and authorized_keys, need confirming."
+      },
+      {
+        "ctx": "New users and password changes",
+        "kql": "index=* sourcetype=linux_secure (\"new user\" OR \"useradd\" OR \"password changed\" OR \"usermod\") earliest=-{{BASELINE}}\n| table _time, host, _raw\n| sort - _time",
+        "read": "Accounts created outside configuration management are suspicious."
+      },
+      {
+        "ctx": "Reverse shells and droppers (auditd execve)",
+        "kql": "index=* sourcetype=linux:audit type=EXECVE earliest=-{{LOOKBACK}}\n| search \"/dev/tcp\" OR \"nc -e\" OR \"bash -i\" OR \"mkfifo\" OR (\"curl\" AND \"| sh\") OR \"base64 -d\"\n| table _time, host, _raw",
+        "read": "Needs auditd execve rules and the Linux TA."
+      }
+    ],
+    "fp": "Admin maintenance and automation."
+  },
+  {
+    "id": "splunk-aws-cloudtrail",
+    "name": "Splunk: AWS CloudTrail (console logins, IAM, logging disabled)",
+    "cat": "Cloud infra",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1078.004",
+      "T1098.001",
+      "T1562.008"
+    ],
+    "playbook": true,
+    "summary": "aws:cloudtrail: console logins without MFA, new keys and users, and trails being stopped.",
+    "steps": [
+      {
+        "ctx": "Console logins with MFA status",
+        "kql": "index=* sourcetype=aws:cloudtrail eventName=ConsoleLogin earliest=-{{LOOKBACK}}\n| table _time, userIdentity.type, userIdentity.arn, sourceIPAddress, additionalEventData.MFAUsed, responseElements.ConsoleLogin, userAgent\n| sort - _time",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Root logins and MFAUsed=No successes first."
+      },
+      {
+        "ctx": "IAM changes",
+        "kql": "index=* sourcetype=aws:cloudtrail eventName IN (CreateAccessKey, CreateUser, AttachUserPolicy, PutUserPolicy, CreateLoginProfile, AddUserToGroup) earliest=-{{BASELINE}}\n| table _time, eventName, userIdentity.arn, sourceIPAddress, requestParameters.userName, errorCode\n| sort - _time",
+        "read": "New keys or admin policies from unknown IPs indicate takeover."
+      },
+      {
+        "ctx": "Logging disabled",
+        "kql": "index=* sourcetype=aws:cloudtrail eventName IN (StopLogging, DeleteTrail, DeleteDetector, DeleteFlowLogs, DisableSecurityHub) earliest=-{{BASELINE}}\n| table _time, eventName, userIdentity.arn, sourceIPAddress",
+        "read": "High priority outside a change window."
+      }
+    ],
+    "fp": "Automation roles."
+  },
+  {
+    "id": "splunk-vpn",
+    "name": "Splunk: VPN logins (Cisco ASA / AnyConnect, Palo Alto GlobalProtect)",
+    "cat": "Identity",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1133",
+      "T1078"
+    ],
+    "playbook": true,
+    "summary": "Remote-access VPN sessions for a user and failed VPN logins by source.",
+    "steps": [
+      {
+        "ctx": "VPN sessions for the user",
+        "kql": "index=* (sourcetype=cisco:asa (message_id=113039 OR message_id=722022 OR message_id=722023)) OR (sourcetype=\"pan:globalprotect\") user=\"{{ACCOUNT}}\" earliest=-{{BASELINE}}\n| stats count, values(src_ip) as public_ips, values(assigned_ip) as vpn_ips, min(_time) as first, max(_time) as last by user\n| convert ctime(first) ctime(last)",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. Compare public IPs with the user's country; field names differ by vendor TA."
+      },
+      {
+        "ctx": "Failed VPN logins by source",
+        "kql": "index=* (sourcetype=cisco:asa (message_id=113015 OR message_id=113005)) OR (sourcetype=\"pan:globalprotect\" status=failure) earliest=-{{LOOKBACK}}\n| stats count as failures, dc(user) as users by src_ip\n| where failures > 10\n| sort - failures",
+        "read": "VPN portals are a common spraying target; check whether any user from that IP succeeded."
+      }
+    ],
+    "fp": "Users typing old passwords."
+  },
+  {
+    "id": "splunk-proxy",
+    "name": "Splunk: web proxy (who visited a domain, uploads, categories)",
+    "cat": "Web & proxy",
+    "platform": "Splunk",
+    "src": "Splunk (SPL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071.001",
+      "T1567"
+    ],
+    "playbook": true,
+    "summary": "Proxy logs (Zscaler, Bluecoat, Squid via CIM Web model): users visiting a domain, large uploads, risky categories.",
+    "steps": [
+      {
+        "ctx": "Users who visited the domain",
+        "kql": "index=* tag=web url=\"*{{DOMAIN}}*\" earliest=-{{BASELINE}}\n| stats count, values(action) as action, values(http_method) as methods, min(_time) as first by user, src\n| convert ctime(first)",
+        "read": "Splunk SPL, not KQL. Index and sourcetype names differ per environment; change index=* to your index for speed. tag=web uses the CIM Web data model tags; replace with your proxy sourcetype if not tagged. POST after a phishing click may mean credentials were entered."
+      },
+      {
+        "ctx": "Large uploads (possible exfiltration)",
+        "kql": "index=* tag=web http_method=POST earliest=-{{LOOKBACK}}\n| stats sum(bytes_out) as bytes_out by user, dest\n| eval MB=round(bytes_out/1048576,1)\n| where MB > 100\n| sort - MB",
+        "read": "Uploads to personal cloud storage or file-sharing sites need the user and data owner to confirm."
+      }
+    ],
+    "fp": "Video calls, cloud backups and sync clients."
   },
   {
     "id": "s1-host-activity",
     "name": "SentinelOne: host activity (processes, network, DNS, files)",
-    "cat": "SentinelOne",
+    "cat": "Endpoint",
     "src": "SentinelOne (PowerQuery / Deep Visibility)",
     "sev": "info",
     "mitre": [
@@ -2556,12 +3557,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Executables or scripts dropped by browsers, Office or script hosts are suspicious."
       }
     ],
-    "fp": "Updaters and management agents create files and connections constantly; compare with peer endpoints."
+    "fp": "Updaters and management agents create files and connections constantly; compare with peer endpoints.",
+    "platform": "SentinelOne"
   },
   {
     "id": "s1-ioc-hunt",
     "name": "SentinelOne: hunt an IoC across all endpoints (hash, IP, domain)",
-    "cat": "SentinelOne",
+    "cat": "Endpoint",
     "src": "SentinelOne (PowerQuery / Deep Visibility)",
     "sev": "info",
     "mitre": [],
@@ -2584,12 +3586,13 @@ window.PLAYBOOK_ALERTS = [
         "read": "Put the domain in Domain / URL fragment; subdomains match too."
       }
     ],
-    "fp": "Shared infrastructure (CDNs, cloud) shows up on many endpoints; check the owner in OSINT first."
+    "fp": "Shared infrastructure (CDNs, cloud) shows up on many endpoints; check the owner in OSINT first.",
+    "platform": "SentinelOne"
   },
   {
     "id": "s1-logons",
     "name": "SentinelOne: logons and remote access on an endpoint",
-    "cat": "SentinelOne",
+    "cat": "Identity",
     "src": "SentinelOne (PowerQuery / Deep Visibility)",
     "sev": "info",
     "mitre": [
@@ -2605,6 +3608,612 @@ window.PLAYBOOK_ALERTS = [
         "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Fields like endpoint.name take one value. Failed logons followed by a success for the same user from the same source is a brute-force success; type REMOTE_INTERACTIVE is RDP."
       }
     ],
-    "fp": "Service and admin accounts log on frequently; filter known ones."
+    "fp": "Service and admin accounts log on frequently; filter known ones.",
+    "platform": "SentinelOne"
+  },
+  {
+    "id": "s1-suspicious-process",
+    "name": "SentinelOne: Office spawning scripts and encoded PowerShell",
+    "cat": "Endpoint",
+    "platform": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.001",
+      "T1204.002",
+      "T1218"
+    ],
+    "playbook": true,
+    "summary": "Malicious-document and living-off-the-land patterns in Deep Visibility process events.",
+    "steps": [
+      {
+        "ctx": "Office applications spawning script engines",
+        "kql": "event.type = 'Process Creation' src.process.name in:anycase ('winword.exe', 'excel.exe', 'outlook.exe', 'powerpnt.exe', 'onenote.exe') tgt.process.name in:anycase ('powershell.exe', 'cmd.exe', 'wscript.exe', 'cscript.exe', 'mshta.exe', 'rundll32.exe', 'regsvr32.exe')\n| columns event.time, endpoint.name, src.process.user, src.process.name, tgt.process.name, tgt.process.cmdline\n| sort -event.time\n| limit 500",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Any result is high priority (malicious document). Check where the document came from."
+      },
+      {
+        "ctx": "Encoded or download PowerShell",
+        "kql": "event.type = 'Process Creation' tgt.process.name in:anycase ('powershell.exe', 'pwsh.exe') tgt.process.cmdline contains:anycase ('-enc', 'FromBase64String', 'DownloadString', 'IEX', '-w hidden')\n| columns event.time, endpoint.name, src.process.user, src.process.name, tgt.process.cmdline\n| sort -event.time\n| limit 500",
+        "read": "Decode -enc payloads (Base64 UTF-16LE) before deciding."
+      },
+      {
+        "ctx": "LOLBins with URLs",
+        "kql": "event.type = 'Process Creation' tgt.process.name in:anycase ('certutil.exe', 'bitsadmin.exe', 'mshta.exe', 'regsvr32.exe', 'rundll32.exe') tgt.process.cmdline contains:anycase ('http', 'urlcache', '/transfer', 'scrobj')\n| group runs = count(), last = max(event.time) by endpoint.name, tgt.process.name, tgt.process.cmdline\n| sort -runs",
+        "read": "Download-and-execute tricks with signed Windows binaries."
+      }
+    ],
+    "fp": "Finance macros and IT scripts."
+  },
+  {
+    "id": "s1-persistence",
+    "name": "SentinelOne: persistence (scheduled tasks, Run keys)",
+    "cat": "Endpoint",
+    "platform": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "medium",
+    "mitre": [
+      "T1053.005",
+      "T1547.001"
+    ],
+    "playbook": true,
+    "summary": "Scheduled tasks registered and Run-key values set on an endpoint.",
+    "steps": [
+      {
+        "ctx": "Scheduled tasks registered on the endpoint",
+        "kql": "endpoint.name = '{{DEVICE}}' event.category = 'scheduled_task'\n| columns event.time, event.type, task.name, task.path, src.process.name, src.process.user\n| sort -event.time",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Tasks running scripts from AppData, Temp or Public are suspicious."
+      },
+      {
+        "ctx": "Run / RunOnce registry values",
+        "kql": "endpoint.name = '{{DEVICE}}' event.category = 'registry' registry.keyPath contains:anycase ('CurrentVersion\\\\Run')\n| columns event.time, event.type, registry.keyPath, registry.value, src.process.name, src.process.user\n| sort -event.time",
+        "read": "Values pointing to user-writable folders are the usual malware persistence."
+      }
+    ],
+    "fp": "Software updaters."
+  },
+  {
+    "id": "s1-behavioral-indicators",
+    "name": "SentinelOne: behavioral indicators and endpoints reporting",
+    "cat": "SIEM health",
+    "platform": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Which behavioural indicators fired and which endpoints are sending telemetry.",
+    "steps": [
+      {
+        "ctx": "Behavioral indicators by name and endpoint",
+        "kql": "event.type = 'Behavioral Indicators'\n| group hits = count(), endpoints = estimate_distinct(endpoint.name), last = max(event.time) by indicator.name, indicator.category\n| sort -hits\n| limit 100",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Indicators like credential dumping or process injection on few endpoints are the ones to open first."
+      },
+      {
+        "ctx": "Last event per endpoint (who stopped reporting?)",
+        "kql": "| group last = max(event.time) by endpoint.name, endpoint.os\n| sort last\n| limit 200",
+        "read": "Endpoints at the top went quiet first: offline, uninstalled agent or tampering. Use a 7-day range."
+      }
+    ],
+    "fp": "Reference entry."
+  },
+  {
+    "id": "s1-network-web",
+    "name": "SentinelOne: URLs, remote-access ports and an IP",
+    "cat": "Network",
+    "platform": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "medium",
+    "mitre": [
+      "T1071",
+      "T1021"
+    ],
+    "playbook": true,
+    "summary": "Who connected to an IP or URL, and outbound remote-access protocols.",
+    "steps": [
+      {
+        "ctx": "Endpoints that connected to the IP",
+        "kql": "event.category = 'ip' dst.ip.address = '{{IP}}'\n| group connections = count(), last = max(event.time) by endpoint.name, src.process.name, dst.port.number\n| sort -connections",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Note which process made the connection; browsers are usually benign, script hosts and unsigned binaries are not."
+      },
+      {
+        "ctx": "URLs visited containing the domain",
+        "kql": "event.category = 'url' url.address contains:anycase '{{DOMAIN}}'\n| columns event.time, endpoint.name, src.process.name, src.process.user, url.address\n| sort -event.time",
+        "read": "URL events exist where SentinelOne captures them (browsers on Windows)."
+      },
+      {
+        "ctx": "Outbound RDP / SMB / SSH / WinRM",
+        "kql": "event.category = 'ip' event.network.direction = 'OUTGOING' dst.port.number in (22, 445, 3389, 5985, 5986)\n| group connections = count() by endpoint.name, dst.ip.address, dst.port.number, src.process.name\n| sort -connections",
+        "read": "Remote-access protocols from workstations to unusual internal or public addresses show lateral movement."
+      }
+    ],
+    "fp": "Admins and jump hosts."
+  },
+  {
+    "id": "s1-linux",
+    "name": "SentinelOne: Linux reverse shells and persistence",
+    "cat": "Linux",
+    "platform": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.004",
+      "T1053.003"
+    ],
+    "playbook": true,
+    "summary": "Linux agents: reverse shells, download-and-execute, cron and SSH key changes.",
+    "steps": [
+      {
+        "ctx": "Reverse shells and droppers",
+        "kql": "endpoint.os = 'linux' event.type = 'Process Creation' tgt.process.cmdline contains:anycase ('/dev/tcp/', 'nc -e', 'bash -i', 'mkfifo', 'base64 -d', '| sh', '| bash')\n| columns event.time, endpoint.name, src.process.user, src.process.name, tgt.process.cmdline\n| sort -event.time",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Web server users running these mean the app was exploited."
+      },
+      {
+        "ctx": "Cron, sudoers and authorized_keys changes",
+        "kql": "endpoint.os = 'linux' event.category = 'file' tgt.file.path contains:anycase ('/etc/cron', '/var/spool/cron', '/etc/sudoers', 'authorized_keys', '/etc/passwd')\n| columns event.time, endpoint.name, event.type, tgt.file.path, src.process.name, src.process.user\n| sort -event.time",
+        "read": "Linux persistence and privilege changes; confirm with the server owner."
+      }
+    ],
+    "fp": "Config management tools."
+  },
+  {
+    "id": "s1-dns",
+    "name": "SentinelOne: DNS lookups (rare and long domains)",
+    "cat": "DNS",
+    "platform": "SentinelOne",
+    "src": "SentinelOne (PowerQuery / Deep Visibility)",
+    "sev": "medium",
+    "mitre": [
+      "T1071.004"
+    ],
+    "playbook": true,
+    "summary": "Domains resolved across endpoints: rare domains and very long names.",
+    "steps": [
+      {
+        "ctx": "Rare domains across the fleet",
+        "kql": "event.category = 'dns'\n| group lookups = count(), endpoints = estimate_distinct(endpoint.name) by event.dns.request\n| filter endpoints = 1\n| sort lookups\n| limit 200",
+        "read": "SentinelOne Singularity Data Lake / Deep Visibility PowerQuery, not KQL. Set the time range in the console. Domains seen on only one endpoint are hunting leads; most are benign."
+      },
+      {
+        "ctx": "Very long DNS names (tunnelling)",
+        "kql": "event.category = 'dns'\n| let len = len(event.dns.request)\n| filter len > 60\n| group lookups = count() by endpoint.name, event.dns.request\n| sort -lookups",
+        "read": "Long random labels under one parent domain suggest data encoded in DNS."
+      }
+    ],
+    "fp": "CDN and telemetry domains."
+  },
+  {
+    "id": "r7-asset-auth",
+    "name": "Rapid7: failed and successful logons on assets (Asset Authentication)",
+    "cat": "Identity",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1110",
+      "T1078"
+    ],
+    "playbook": true,
+    "summary": "Windows / domain authentication: failures by user and source, results for one account, logon types.",
+    "steps": [
+      {
+        "ctx": "Log set: Asset Authentication. Failed logons by user",
+        "kql": "where(result ISTARTS-WITH \"FAILED\") groupby(destination_user) calculate(count)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Users with many failures are brute-force targets. If destination_user is empty in your data, use destination_account."
+      },
+      {
+        "ctx": "Log set: Asset Authentication. Failed logons by source IP",
+        "kql": "where(result ISTARTS-WITH \"FAILED\") groupby(source_asset_address) calculate(count)",
+        "read": "One source failing against many accounts is password spraying."
+      },
+      {
+        "ctx": "Log set: Asset Authentication. All activity for one account",
+        "kql": "where(destination_account=NOCASE(\"{{ACCOUNT}}\")) groupby(result, logon_type, source_asset_address)",
+        "read": "Put the account in Account name. A SUCCESS from a source that also has many FAILED rows means the brute force worked."
+      },
+      {
+        "ctx": "Log set: Asset Authentication. Failed non-Kerberos logons by destination asset",
+        "kql": "where(service NOT IN [krbtgt, kerberos] AND result ISTARTS-WITH \"FAILED\") groupby(destination_asset) calculate(count)",
+        "read": "Shows which servers are being attacked."
+      }
+    ],
+    "fp": "Stale saved passwords and service accounts after a password change."
+  },
+  {
+    "id": "r7-ingress-auth",
+    "name": "Rapid7: VPN / Microsoft 365 / SSO sign-ins (Ingress Authentication)",
+    "cat": "Identity",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1078",
+      "T1110.003"
+    ],
+    "playbook": true,
+    "summary": "External logins: by user, by country, from an IP, and successful sign-ins outside the expected countries.",
+    "steps": [
+      {
+        "ctx": "Log set: Ingress Authentication. Sign-ins for one user",
+        "kql": "where(user ICONTAINS \"{{UPN}}\") groupby(result, service, source_ip, geoip_country_name)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Shows every service (VPN, Office 365, Okta) the user signed into and from where."
+      },
+      {
+        "ctx": "Log set: Ingress Authentication. Results for an IP",
+        "kql": "where(source_ip=\"{{IP}}\") groupby(user, result) calculate(count)",
+        "read": "Many users with FAILED_BAD_LOGIN and one SUCCESS from the same IP means a sprayed account was compromised."
+      },
+      {
+        "ctx": "Log set: Ingress Authentication. Unique IPs with failed logins",
+        "kql": "where(result=FAILED_BAD_LOGIN) calculate(UNIQUE:source_ip)",
+        "read": "A jump in this number is the start of a spraying campaign."
+      },
+      {
+        "ctx": "Log set: Ingress Authentication. Successful sign-ins by country, user agent and service",
+        "kql": "where(result=SUCCESS AND geoip_country_code NOT IN [{{COUNTRIES}}]) groupby(user, geoip_country_name, service, user_agent)",
+        "read": "Put the home country codes in Countries (e.g. AU). Each row is a success from abroad to confirm with the user."
+      },
+      {
+        "ctx": "Log set: Ingress Authentication. Hourly successes and failures",
+        "kql": "where(user ICONTAINS \"{{UPN}}\") groupby(result) calculate(count) timeslice(1h)",
+        "read": "Use the chart view to see when the failures turned into a success."
+      }
+    ],
+    "fp": "Travel and VPN egress."
+  },
+  {
+    "id": "r7-ad-admin",
+    "name": "Rapid7: Active Directory admin activity (group changes, lockouts, log cleared)",
+    "cat": "Identity",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1098",
+      "T1136.002",
+      "T1070.001"
+    ],
+    "playbook": true,
+    "summary": "Who was added to security groups, privilege escalations, lockouts and audit-log clearing.",
+    "steps": [
+      {
+        "ctx": "Log set: Active Directory Admin Activity. Users added to security groups",
+        "kql": "where(action=\"MEMBER_ADDED_TO_SECURITY_GROUP\") groupby(source_user, target_user, group)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. source_user made the change. Additions to admin groups need a change ticket."
+      },
+      {
+        "ctx": "Log set: Active Directory Admin Activity. Privilege escalations",
+        "kql": "where(target_account NOT ICONTAINS \"$\" AND action=PRIVILEGE_ESCALATION) groupby(target_account, group, source_user)",
+        "read": "Excludes computer accounts ($)."
+      },
+      {
+        "ctx": "Log set: Active Directory Admin Activity. Account lockouts by host (4740)",
+        "kql": "where(/4740 EVENT/) groupby(destination_account)",
+        "read": "Lockouts across many accounts at once point to spraying."
+      },
+      {
+        "ctx": "Log set: Active Directory Admin Activity. Audit log cleared (1102)",
+        "kql": "where(/1102 EVENT/ OR /\\s517 EVENT/)",
+        "read": "Any result outside maintenance is high priority."
+      }
+    ],
+    "fp": "Helpdesk and IAM processes."
+  },
+  {
+    "id": "r7-process-start",
+    "name": "Rapid7: process start (PowerShell, taskkill, rare processes)",
+    "cat": "Endpoint",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.001",
+      "T1489"
+    ],
+    "playbook": true,
+    "summary": "Endpoint process events from the Insight Agent: PowerShell command lines, processes on a host, hash lookups.",
+    "steps": [
+      {
+        "ctx": "Log set: Process Start Event. Processes on one host",
+        "kql": "where(hostname=NOCASE(\"{{DEVICE}}\")) groupby(process.name, process.username, parent_process.name)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Script hosts with an Office or browser parent are the first to open."
+      },
+      {
+        "ctx": "Log set: Process Start Event. PowerShell command lines (not .ps1 files)",
+        "kql": "where(process.name=/powershell.exe/i AND process.cmd_line NOT IN [\"null\", /.*ps1.*/i]) groupby(process.cmd_line)",
+        "read": "Look for -enc, IEX, DownloadString, -w hidden."
+      },
+      {
+        "ctx": "Log set: Process Start Event. Encoded PowerShell",
+        "kql": "where(process.name=/powershell.exe|pwsh.exe/i AND process.cmd_line=/-(e|enc|encodedcommand)\\s/i) groupby(hostname, process.username, process.cmd_line)",
+        "read": "Decode the payload (Base64 UTF-16LE)."
+      },
+      {
+        "ctx": "Log set: Process Start Event. taskkill and service stops",
+        "kql": "where(process.name=NOCASE(taskkill.exe) OR process.cmd_line ICONTAINS \"net stop\") groupby(hostname, process.cmd_line)",
+        "read": "Mass stopping of AV, backup or database services is a ransomware precursor."
+      },
+      {
+        "ctx": "Log set: Process Start Event. Where has this hash run?",
+        "kql": "where(process.hashes.sha256=NOCASE(\"{{SHA256}}\")) groupby(hostname, process.name, process.username)",
+        "read": "One host = targeted; many hosts = deployed software or a campaign."
+      },
+      {
+        "ctx": "Log set: Process Start Event. Process reputation",
+        "kql": "groupby(process.hash_reputation.reputation)",
+        "read": "Drill into MALICIOUS or SUSPICIOUS values."
+      }
+    ],
+    "fp": "Admin scripts and software deployment."
+  },
+  {
+    "id": "r7-dns-web",
+    "name": "Rapid7: DNS queries and web proxy",
+    "cat": "DNS",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071.004",
+      "T1071.001"
+    ],
+    "playbook": true,
+    "summary": "Who resolved a domain, unusual top-level domains, and users visiting a URL.",
+    "steps": [
+      {
+        "ctx": "Log set: DNS Query. Who looked up the domain?",
+        "kql": "where(query ICONTAINS \"{{DOMAIN}}\") groupby(asset, user)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Each asset resolved the domain; check its firewall and proxy traffic next."
+      },
+      {
+        "ctx": "Log set: DNS Query. Uncommon top-level domains",
+        "kql": "where(public_suffix AND public_suffix NOT IN [com, net, org]) groupby(public_suffix)",
+        "read": "TLDs like .top, .xyz, .zip, .ru that your business doesn't use are worth drilling into."
+      },
+      {
+        "ctx": "Log set: Web Proxy. Users who visited the URL",
+        "kql": "where(url ICONTAINS \"{{DOMAIN}}\") groupby(user, source_ip)",
+        "read": "Field names depend on the proxy (Zscaler, Palo Alto, etc.); check one raw event first."
+      }
+    ],
+    "fp": "CDNs and SaaS subdomains."
+  },
+  {
+    "id": "r7-firewall",
+    "name": "Rapid7: firewall traffic (denied, unusual ports, large uploads)",
+    "cat": "Firewall",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071",
+      "T1048"
+    ],
+    "playbook": true,
+    "summary": "Traffic to an IP, denied connections, accepted outbound traffic on unusual ports, and top talkers by bytes.",
+    "steps": [
+      {
+        "ctx": "Log set: Firewall. All traffic to or from the IP",
+        "kql": "where(source_address=\"{{IP}}\" OR destination_address=\"{{IP}}\") groupby(source_address, destination_address, destination_port, connection_status)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. ACCEPT outbound to a malicious IP needs the internal host investigated; DENY only means the block worked."
+      },
+      {
+        "ctx": "Log set: Firewall. Denied connections by source",
+        "kql": "where(connection_status=DENY) groupby(source_address) calculate(count)",
+        "read": "Internal sources with many denies may be infected hosts beaconing."
+      },
+      {
+        "ctx": "Log set: Firewall. Accepted outbound on unusual ports",
+        "kql": "where(connection_status=\"ACCEPT\" AND direction=\"OUTBOUND\" AND destination_port NOT IN [\"443\", \"80\", \"53\"]) groupby(destination_port)",
+        "read": "Drill into rare ports to see source and destination."
+      },
+      {
+        "ctx": "Log set: Firewall. Top outbound destinations by bytes",
+        "kql": "where(direction=OUTBOUND) groupby(destination_address) calculate(sum:outgoing_bytes) limit(10)",
+        "read": "Large uploads to unknown destinations may be exfiltration."
+      },
+      {
+        "ctx": "Log set: Firewall. External denials (excluding private ranges)",
+        "kql": "where(connection_status=DENY AND source_address NOT IN [IP(10.0.0.0/8), IP(172.16.0.0/12), IP(192.168.0.0/16)]) groupby(source_address) calculate(count)",
+        "read": "Internet scanners; check if any of them was later accepted."
+      }
+    ],
+    "fp": "Backups and software updates."
+  },
+  {
+    "id": "r7-cloud-o365",
+    "name": "Rapid7: Microsoft 365 activity and guest accounts (Cloud Service Activity)",
+    "cat": "Cloud apps",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1530",
+      "T1136.003"
+    ],
+    "playbook": true,
+    "summary": "What a user did in Microsoft 365, file downloads, and guest (#EXT#) account activity.",
+    "steps": [
+      {
+        "ctx": "Log set: Cloud Service Activity. Actions by the user",
+        "kql": "where(source_user ICONTAINS \"{{UPN}}\") groupby(source_json.Workload, action)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. FileDownloaded at volume, AnonymousLinkCreated and inbox rule operations stand out."
+      },
+      {
+        "ctx": "Log set: Cloud Service Activity. Files downloaded by the user",
+        "kql": "where(source_user ICONTAINS \"{{UPN}}\" AND action=/FileDownloaded|FileSyncDownloadedFull/) groupby(source_json.SourceFileName) calculate(count)",
+        "read": "Hundreds of files in a short window is exfiltration until proven otherwise."
+      },
+      {
+        "ctx": "Log set: Cloud Service Admin Activity. Guest accounts created",
+        "kql": "where(action=CREATE_USER AND target_user=/.*\\#EXT\\#.*/i) groupby(source_user, target_user)",
+        "read": "Guests invited by non-admins, or to unknown domains, need confirming."
+      },
+      {
+        "ctx": "Log set: Cloud Service Activity. Guest downloads from OneDrive / SharePoint",
+        "kql": "where(source_user=/.*\\#EXT\\#.*/i AND action=/FileDownloaded|FileAccessed/) groupby(source_user, source_json.SourceFileName)",
+        "read": "Shows what external users actually accessed."
+      }
+    ],
+    "fp": "Project collaboration with partners."
+  },
+  {
+    "id": "r7-email",
+    "name": "Rapid7: inbox rules and forwarding (Cloud Service Activity)",
+    "cat": "Email",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1114.003",
+      "T1564.008"
+    ],
+    "playbook": true,
+    "summary": "Exchange Online inbox rules and mailbox forwarding created by a user.",
+    "steps": [
+      {
+        "ctx": "Log set: Cloud Service Activity. Inbox rules and forwarding for the user",
+        "kql": "where(source_json.Workload=Exchange AND action IN [New-InboxRule, Set-InboxRule, UpdateInboxRules, Set-Mailbox] AND source_user ICONTAINS \"{{UPN}}\")",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Open the raw event: Parameters shows ForwardTo, RedirectTo, DeleteMessage and the rule keywords."
+      },
+      {
+        "ctx": "Log set: Cloud Service Activity. All inbox rule creation (last 7 days)",
+        "kql": "where(source_json.Workload=Exchange AND action=/InboxRule/i) groupby(source_user, source_json.ClientIP)",
+        "read": "Rules created from an IP the user never used before follow most BEC compromises."
+      }
+    ],
+    "fp": "Users' own organising rules."
+  },
+  {
+    "id": "r7-alerts-health",
+    "name": "Rapid7: alerts, IDS and log volume",
+    "cat": "SIEM health",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "info",
+    "mitre": [],
+    "playbook": true,
+    "summary": "Assets with repeated malware alerts, IDS alerts by severity and total log volume.",
+    "steps": [
+      {
+        "ctx": "Log set: Advanced Malware Alert. Assets with 5+ malicious alerts",
+        "kql": "where(severity ICONTAINS \"MALICIOUS\") groupby(asset) having(count>=5)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Repeat offenders may have an active infection the AV keeps re-detecting."
+      },
+      {
+        "ctx": "Log set: IDS Alert. High and critical signatures per asset",
+        "kql": "where(severity=\"HIGH\" OR severity=\"CRITICAL\") groupby(asset) calculate(unique:signature)",
+        "read": "Assets with several unique high signatures are the priority."
+      },
+      {
+        "ctx": "Any log set. Event volume per hour (is data arriving?)",
+        "kql": "calculate(count) timeslice(1h)",
+        "read": "Select the log set first. A flat zero means the event source or collector stopped."
+      }
+    ],
+    "fp": "Reference entry."
+  },
+  {
+    "id": "r7-vpn",
+    "name": "Rapid7: VPN logins (Ingress Authentication)",
+    "cat": "Identity",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1133"
+    ],
+    "playbook": true,
+    "summary": "VPN sessions for an account and VPN logins from outside the expected countries.",
+    "steps": [
+      {
+        "ctx": "Log set: Ingress Authentication (VPN). Logins for the account",
+        "kql": "where(service=VPN AND account=NOCASE(\"{{ACCOUNT}}\")) groupby(result, source_ip, geoip_country_name)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Select the VPN event source. Compare countries with where the user works."
+      },
+      {
+        "ctx": "Log set: Ingress Authentication (VPN). Successful VPN logins outside the home countries",
+        "kql": "where(service=VPN AND result=SUCCESS AND geoip_country_code NOT IN [{{COUNTRIES}}]) groupby(account, geoip_country_name, source_ip)",
+        "read": "Put the home country codes in Countries."
+      }
+    ],
+    "fp": "Travel."
+  },
+  {
+    "id": "r7-linux",
+    "name": "Rapid7: Linux process activity (Insight Agent)",
+    "cat": "Linux",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1059.004"
+    ],
+    "playbook": true,
+    "summary": "Process Start events from Linux assets: reverse shells, curl/wget droppers, cron and SSH key changes.",
+    "steps": [
+      {
+        "ctx": "Log set: Process Start Event. Reverse shells and droppers on Linux",
+        "kql": "where(process.cmd_line ICONTAINS-ANY [\"/dev/tcp/\", \"nc -e\", \"bash -i\", \"mkfifo\", \"base64 -d\", \"| sh\", \"| bash\"]) groupby(hostname, process.username, process.cmd_line)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Web server users running these mean the application was exploited."
+      },
+      {
+        "ctx": "Log set: Process Start Event. Cron, sudoers and SSH keys",
+        "kql": "where(process.cmd_line ICONTAINS-ANY [\"crontab\", \"/etc/sudoers\", \"authorized_keys\", \"useradd\"]) groupby(hostname, process.username, process.cmd_line)",
+        "read": "Persistence; confirm with the server owner."
+      }
+    ],
+    "fp": "Config management."
+  },
+  {
+    "id": "r7-cloud-infra",
+    "name": "Rapid7: AWS / Azure admin activity (Cloud Service Admin Activity)",
+    "cat": "Cloud infra",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1098",
+      "T1078.004"
+    ],
+    "playbook": true,
+    "summary": "Cloud admin actions from the AWS CloudTrail and Azure event sources.",
+    "steps": [
+      {
+        "ctx": "Log set: Cloud Service Admin Activity. Admin actions by user",
+        "kql": "where(source_user ICONTAINS \"{{UPN}}\") groupby(action, source_json.sourceIPAddress)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Use for both AWS and Azure sources; action names follow the provider (CreateAccessKey, roleAssignments/write)."
+      },
+      {
+        "ctx": "Log set: Cloud Service Admin Activity. AWS IAM and logging changes",
+        "kql": "where(action IN [CreateAccessKey, CreateUser, AttachUserPolicy, StopLogging, DeleteTrail]) groupby(source_user, action)",
+        "read": "StopLogging / DeleteTrail outside a change window is high priority."
+      }
+    ],
+    "fp": "Automation roles."
+  },
+  {
+    "id": "r7-web-proxy",
+    "name": "Rapid7: web proxy (domains, users, blocked categories)",
+    "cat": "Web & proxy",
+    "platform": "Rapid7",
+    "src": "Rapid7 InsightIDR (Log Search, LEQL)",
+    "sev": "medium",
+    "mitre": [
+      "T1071.001"
+    ],
+    "playbook": true,
+    "summary": "Web Proxy log set: who visited a domain, blocked traffic and uploads.",
+    "steps": [
+      {
+        "ctx": "Log set: Web Proxy. Users who visited the domain",
+        "kql": "where(url ICONTAINS \"{{DOMAIN}}\") groupby(user, source_ip, http_method)",
+        "read": "Rapid7 InsightIDR Log Search (LEQL), not KQL. Select the log set named in the context line and set the time range in Log Search. Field names depend on the proxy; check one raw event first. POST after a phishing click may mean credentials were entered."
+      },
+      {
+        "ctx": "Log set: Web Proxy. Blocked requests by user",
+        "kql": "where(action=/BLOCK|DENY/i) groupby(user) calculate(count)",
+        "read": "A user suddenly hitting many blocked sites may have an infected browser or extension."
+      }
+    ],
+    "fp": "Ad and tracker domains."
   }
 ];

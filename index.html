@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>SOC Triage Query Hub</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2.5 4.5 6.8v8.4c0 7.2 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.1 11.5-14.3V6.8z' fill='%232747C9'/%3E%3Cpath d='m10.5 16.2 3.6 3.6 7.4-7.6' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20rx%3D%2714%27%20fill%3D%27%230B1320%27%2F%3E%3Cg%20transform%3D%27translate(6.4%206.4)%20scale(.8)%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M32%206%2054.5%2019v26L32%2058%209.5%2045V19z%27%20stroke%3D%27%2322D3EE%27%20stroke-width%3D%273.4%27%2F%3E%3Ccircle%20cx%3D%2732%27%20cy%3D%276%27%20r%3D%274.2%27%20fill%3D%27%230B1320%27%20stroke%3D%27%2322D3EE%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%279.5%27%20cy%3D%2745%27%20r%3D%274.2%27%20fill%3D%27%230B1320%27%20stroke%3D%27%2322D3EE%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2754.5%27%20cy%3D%2745%27%20r%3D%274.2%27%20fill%3D%27%230B1320%27%20stroke%3D%27%2322D3EE%27%20stroke-width%3D%273%27%2F%3E%3Cpath%20d%3D%27m22.6%2024.7%207.3%207-7.3%207%27%20stroke%3D%27%23F1F5F9%27%20stroke-width%3D%273.6%27%2F%3E%3Cpath%20d%3D%27M33.5%2038.9h9.6%27%20stroke%3D%27%2322D3EE%27%20stroke-width%3D%273.6%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -15,7 +15,8 @@
   --accent:#2747C9; --accent-soft:#E3E8FB; --on-accent:#FFFFFF;
   --code-bg:#151A1E; --code-fg:#DCE3E6; --k-kw:#8FB4FF; --k-str:#E6C07B; --k-fn:#7FD6C2; --k-com:#7C8A92; --k-num:#F29E74; --k-tbl:#D7A6FF;
   --sev-high:#B42318; --sev-med:#B54708; --sev-low:#3F6B12; --sev-info:#445059;
-  --c-triage:#5A4FCF; --c-endpoint:#0E7C86; --c-identity:#A23E8C; --c-email:#B05A12; --c-cloud:#2F6FB3; --c-team:#3E7D2F; --c-network:#7A5C00; --c-siem:#5E6472; --c-sentinel:#0063B1; --c-cs:#C8102E; --c-splunk:#5C8F00; --c-s1:#6B2FBF;
+  --c-triage:#5A4FCF; --c-endpoint:#0E7C86; --c-identity:#A23E8C; --c-email:#B05A12; --c-cloud:#2F6FB3; --c-team:#3E7D2F; --c-network:#7A5C00; --c-siem:#5E6472; --c-sentinel:#0063B1; --c-cs:#C8102E; --c-splunk:#5C8F00; --c-s1:#6B2FBF; --c-r7:#C2410C; --c-fw:#9A3412; --c-dns:#0F766E; --c-web:#7C3AED; --c-linux:#4D7C0F; --c-cinfra:#1D4ED8; --c-ti:#BE123C;
+  --brand:#0E7490; --logo-bg:#0B1320; --logo-fg:#22D3EE;
   --warn-bg:#FFF4E0; --warn-fg:#7A4B00;
   --f-ui:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
@@ -26,14 +27,16 @@
   --accent:#8EA6FF; --accent-soft:#232C4D; --on-accent:#0D1330;
   --code-bg:#0B0F12; --code-fg:#D6DEE2;
   --sev-high:#FF8A7A; --sev-med:#F5B04F; --sev-low:#9BD36A; --sev-info:#A9B6BD;
-  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0; --c-sentinel:#6CB8F6; --c-cs:#FF7A8A; --c-splunk:#A6D86B; --c-s1:#B79AF2;
+  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0; --c-sentinel:#6CB8F6; --c-cs:#FF7A8A; --c-splunk:#A6D86B; --c-s1:#B79AF2; --c-r7:#FDBA74; --c-fw:#FB923C; --c-dns:#5EEAD4; --c-web:#C4B5FD; --c-linux:#BEF264; --c-cinfra:#93C5FD; --c-ti:#FDA4AF;
+  --brand:#22D3EE;
   --warn-bg:#3A2A10; --warn-fg:#F6CF8A; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#101417; --panel:#171C20; --sunk:#1E252A; --line:#2B343A; --fg:#E7ECEE; --muted:#97A3A9;
   --accent:#8EA6FF; --accent-soft:#232C4D; --on-accent:#0D1330;
   --code-bg:#0B0F12; --code-fg:#D6DEE2;
   --sev-high:#FF8A7A; --sev-med:#F5B04F; --sev-low:#9BD36A; --sev-info:#A9B6BD;
-  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0; --c-sentinel:#6CB8F6; --c-cs:#FF7A8A; --c-splunk:#A6D86B; --c-s1:#B79AF2;
+  --c-triage:#A79DFF; --c-endpoint:#4FC9D3; --c-identity:#E58BCF; --c-email:#F0A160; --c-cloud:#7DB4F0; --c-team:#8FD07A; --c-network:#E2C46A; --c-siem:#AEB4C0; --c-sentinel:#6CB8F6; --c-cs:#FF7A8A; --c-splunk:#A6D86B; --c-s1:#B79AF2; --c-r7:#FDBA74; --c-fw:#FB923C; --c-dns:#5EEAD4; --c-web:#C4B5FD; --c-linux:#BEF264; --c-cinfra:#93C5FD; --c-ti:#FDA4AF;
+  --brand:#22D3EE;
   --warn-bg:#3A2A10; --warn-fg:#F6CF8A; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -211,14 +214,17 @@ body.view-osint #q,body.view-osint .search,body.view-osint #addBtn,body.view-osi
 </style>
 <style>
 /* Header brand: logo, name, owner badge and platform line. */
-header.top{background:linear-gradient(180deg,var(--accent-soft),var(--bg) 85%)}
+header.top{background:linear-gradient(180deg,color-mix(in srgb,var(--brand) 12%,var(--bg)),var(--bg) 85%)}
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
-.brand .logo{color:var(--accent);display:grid;place-items:center;flex:none;filter:drop-shadow(0 2px 6px color-mix(in srgb,var(--accent) 35%,transparent))}
+.brand .logo{display:grid;place-items:center;flex:none;filter:drop-shadow(0 3px 8px color-mix(in srgb,var(--brand) 30%,transparent))}
 .brand-text{display:flex;flex-direction:column;gap:2px;min-width:0}
 .brand-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
-.brand h1{margin:0;font-size:1.35rem;font-weight:800;letter-spacing:-.015em}
+.brand h1{margin:0;display:flex;flex-direction:column;line-height:1.05}
+.brand .wm-main{font-size:1.4rem;font-weight:800;letter-spacing:-.015em}
+.brand .wm-sub{display:flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:.68rem;font-weight:500;letter-spacing:.42em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.brand .wm-sub::before{content:"";width:18px;height:3px;border-radius:2px;background:var(--brand)}
 .brand .tag{font-family:var(--f-mono);font-size:.7rem;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
-.owner{font-size:.74rem;font-weight:700;color:var(--accent);background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:999px;padding:2px 10px;white-space:nowrap}
+.owner{font-size:.74rem;font-weight:700;color:var(--brand);background:var(--panel);border:1px solid color-mix(in srgb,var(--brand) 40%,var(--line));border-radius:999px;padding:2px 10px;white-space:nowrap}
 .views button{transition:background .15s,color .15s}
 .views button:hover:not([aria-pressed="true"]){color:var(--fg);background:var(--sunk)}
 </style>
@@ -229,14 +235,14 @@ header.top{background:linear-gradient(180deg,var(--accent-soft),var(--bg) 85%)}
   <div class="wrap">
     <div class="top-row">
       <div class="brand">
-        <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32" width="34" height="34"><path d="M16 2.5 4.5 6.8v8.4c0 7.2 4.9 12.4 11.5 14.3 6.6-1.9 11.5-7.1 11.5-14.3V6.8z" fill="currentColor"/><path d="m10.5 16.2 3.6 3.6 7.4-7.6" fill="none" stroke="var(--on-accent)" stroke-width="2.4" stroke-linecap="square"/></svg></span>
+        <span class="logo"><svg viewBox="0 0 64 64" width="42" height="42" role="img" aria-label="SOC Triage Query Hub logo"><rect width="64" height="64" rx="14" fill="var(--logo-bg)"/><g transform="translate(6.4 6.4) scale(.8)" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M32 6 54.5 19v26L32 58 9.5 45V19z" stroke="var(--logo-fg)" stroke-width="3.4"/><circle cx="32" cy="6" r="4.2" fill="var(--logo-bg)" stroke="var(--logo-fg)" stroke-width="3"/><circle cx="9.5" cy="45" r="4.2" fill="var(--logo-bg)" stroke="var(--logo-fg)" stroke-width="3"/><circle cx="54.5" cy="45" r="4.2" fill="var(--logo-bg)" stroke="var(--logo-fg)" stroke-width="3"/><path d="m22.6 24.7 7.3 7-7.3 7" stroke="#F1F5F9" stroke-width="3.6"/><path d="M33.5 38.9h9.6" stroke="var(--logo-fg)" stroke-width="3.6"/></g></svg></span>
         <div class="brand-text">
-          <div class="brand-line"><h1>SOC Triage Query Hub</h1><span class="owner" title="Project owner">Owner: Aira Mae Bugay</span></div>
-          <span class="tag">Defender · Sentinel · CrowdStrike · Splunk · SentinelOne · OSINT</span>
+          <div class="brand-line"><h1><span class="wm-main">SOC Triage</span><span class="wm-sub">Query Hub</span></h1><span class="owner" title="Project owner">Owner: Aira Mae Bugay</span></div>
+          <span class="tag">Defender · Sentinel · CrowdStrike · Splunk · SentinelOne · Rapid7 · OSINT</span>
         </div>
       </div>
       <label class="search" for="q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search alert name, table, MITRE ID…" autocomplete="off"></label>
-      <div class="views" role="group" aria-label="Platform"><button type="button" data-view="Defender" aria-pressed="true">Defender</button><button type="button" data-view="Sentinel" aria-pressed="false">Sentinel</button><button type="button" data-view="CrowdStrike" aria-pressed="false">CrowdStrike</button><button type="button" data-view="Splunk" aria-pressed="false">Splunk</button><button type="button" data-view="SentinelOne" aria-pressed="false">SentinelOne</button><button type="button" data-view="osint" aria-pressed="false">OSINT</button></div>
+      <div class="views" role="group" aria-label="Platform"><button type="button" data-view="Defender" aria-pressed="true">Defender</button><button type="button" data-view="Sentinel" aria-pressed="false">Sentinel</button><button type="button" data-view="CrowdStrike" aria-pressed="false">CrowdStrike</button><button type="button" data-view="Splunk" aria-pressed="false">Splunk</button><button type="button" data-view="SentinelOne" aria-pressed="false">SentinelOne</button><button type="button" data-view="Rapid7" aria-pressed="false">Rapid7</button><button type="button" data-view="osint" aria-pressed="false">OSINT</button></div>
       <button class="btn primary" id="addBtn" type="button">+ Add alert</button>
     </div>
     <div class="filters" id="filters" role="toolbar" aria-label="Filter by category"></div>
@@ -257,7 +263,7 @@ header.top{background:linear-gradient(180deg,var(--accent-soft),var(--bg) 85%)}
 
 const CATS = {
   Endpoint:{c:"--c-endpoint"}, Identity:{c:"--c-identity"},
-  Email:{c:"--c-email"}, "Cloud apps":{c:"--c-cloud"}, Network:{c:"--c-network"}, "SIEM health":{c:"--c-siem"}, "Sentinel logs":{c:"--c-sentinel"}, CrowdStrike:{c:"--c-cs"}, Splunk:{c:"--c-splunk"}, SentinelOne:{c:"--c-s1"}, Team:{c:"--c-team"}
+  Email:{c:"--c-email"}, "Cloud apps":{c:"--c-cloud"}, Network:{c:"--c-network"}, "SIEM health":{c:"--c-siem"}, "Cloud infra":{c:"--c-cinfra"}, Firewall:{c:"--c-fw"}, DNS:{c:"--c-dns"}, "Web & proxy":{c:"--c-web"}, Linux:{c:"--c-linux"}, "Threat intel":{c:"--c-ti"}, Team:{c:"--c-team"}
 };
 
 /* Fill-in fields. list:true -> comma-separated input rendered as "a", "b".
@@ -490,8 +496,10 @@ function highlightFills(str){
 
 /* ---------------- render: filters + list ---------------- */
 /* Platform tabs: Sentinel logs, CrowdStrike, Splunk and SentinelOne entries get their own tab; everything else is Defender. */
-const PLATFORM_OF = { "Sentinel logs":"Sentinel", CrowdStrike:"CrowdStrike", Splunk:"Splunk", SentinelOne:"SentinelOne" };
-const platformOf = e => e.team ? "Defender" : (PLATFORM_OF[e.cat] || "Defender");
+// Each entry belongs to one platform tab ("platform" field; Defender when absent) and one log-source category.
+const CAT_ORDER = ["Endpoint","Identity","Email","Cloud apps","Cloud infra","Network","Firewall","DNS","Web & proxy","Linux","Threat intel","SIEM health"];
+const PLATFORMS = ["Defender","Sentinel","CrowdStrike","Splunk","SentinelOne","Rapid7"];
+const platformOf = e => e.team ? "Defender" : (PLATFORMS.includes(e.platform) ? e.platform : "Defender");
 const inPlatform = e => platformOf(e) === state.platform;
 function setPlatform(p){
   state.platform = p; state.cat = "All"; state.editing = null;
@@ -509,7 +517,7 @@ function matches(e){
 }
 function renderFilters(){
   const all = allEntries().filter(inPlatform);
-  const cats = ["All", ...["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne"].filter(c => all.some(e => !e.team && e.cat === c)), ...(state.platform === "Defender" ? ["Team"] : [])];
+  const cats = ["All", ...CAT_ORDER.filter(c => all.some(e => !e.team && e.cat === c)), ...(state.platform === "Defender" ? ["Team"] : [])];
   $("#filters").innerHTML = cats.map(c => {
     const n = c==="All" ? all.length : c==="Team" ? state.team.length : all.filter(e=>e.cat===c).length;
     const cc = c==="All" ? "" : `style="--cc:var(${CATS[c].c})"`;
@@ -618,7 +626,7 @@ function renderForm(){
         <div class="fld" style="grid-column:1/-1"><label for="f-name">Alert name</label><input id="f-name" value="${esc(f.name)}" placeholder="e.g. Suspicious inbox manipulation rule" required></div>
       </div>
       <div class="frow">
-        <div class="fld"><label for="f-cat">Category</label><select id="f-cat">${["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne"].map(c=>`<option ${f.cat===c?"selected":""}>${c}</option>`).join("")}</select></div>
+        <div class="fld"><label for="f-cat">Category</label><select id="f-cat">${CAT_ORDER.map(c=>`<option ${f.cat===c?"selected":""}>${c}</option>`).join("")}</select></div>
         <div class="fld"><label for="f-sev">Severity</label><select id="f-sev">${["high","medium","low","info"].map(c=>`<option value="${c}" ${f.sev===c?"selected":""}>${c[0].toUpperCase()+c.slice(1)}</option>`).join("")}</select></div>
         <div class="fld"><label for="f-src">Source product</label><input id="f-src" value="${esc(f.src)}" placeholder="Defender for Endpoint"></div>
         <div class="fld"><label for="f-mitre">MITRE IDs</label><input id="f-mitre" value="${esc(f.mitre)}" placeholder="T1110, T1078"></div>
@@ -672,7 +680,7 @@ document.addEventListener("click", async ev => {
   if(ev.target.closest("#copyJson")){
     readForm(); const f = state.editing;
     const slug = (f.name||"new-alert").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60);
-    const entry = { id:slug, name:f.name, cat:f.cat, src:f.src, sev:f.sev, mitre:f.mitre.split(/[,\s]+/).filter(Boolean), summary:f.summary,
+    const entry = { id:slug, name:f.name, cat:f.cat, ...(state.platform!=="Defender" ? {platform:state.platform} : {}), src:f.src, sev:f.sev, mitre:f.mitre.split(/[,\s]+/).filter(Boolean), summary:f.summary,
       steps:f.steps.filter(s=>s.ctx||s.kql).map(s=>({ctx:s.ctx, kql:s.kql, read:s.read})), fp:f.fp };
     const text = JSON.stringify(entry,null,2) + ",";
     try{ await navigator.clipboard.writeText(text); toast("Copied. Paste it inside the list in data/alerts.js"); }

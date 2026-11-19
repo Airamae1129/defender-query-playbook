@@ -21,7 +21,8 @@ catch (e) { fail("data/alerts.js is not valid JSON after the assignment: " + e.m
 // Keep in sync with PARAMS in index.html.
 const TOKENS = new Set(["LOOKBACK","BASELINE","ALERTID","DEVICE","UPN","UPNS","ACCOUNT","IP","IPS","SHA1","SHA256","FILENAME","SENDER","DOMAIN","MSGID","GUEST","OBJECTID","ACTOR","APPID","COUNTRIES","XCOUNTRIES","INTIP","SESSIONID","TABLE","RESOURCE","ALERTNAME","SPN","USERAGENT"]);
 const LIST_TOKENS = new Set(["UPNS","IPS","COUNTRIES","XCOUNTRIES"]);
-const CATS = new Set(["Endpoint","Identity","Email","Cloud apps","Network","SIEM health","Sentinel logs","CrowdStrike","Splunk","SentinelOne"]);
+const CATS = new Set(["Endpoint","Identity","Email","Cloud apps","Cloud infra","Network","Firewall","DNS","Web & proxy","Linux","Threat intel","SIEM health"]);
+const PLATFORMS = new Set(["Sentinel","CrowdStrike","Splunk","SentinelOne","Rapid7"]); // leave "platform" out for Defender
 const SEVS = new Set(["high","medium","low","info"]);
 
 // Columns verified on Microsoft Learn, 9 Oct 2026. Extend when you add tables.
@@ -47,6 +48,7 @@ alerts.forEach((a, i) => {
   if (a?.id) { if (ids.has(a.id)) errors.push(`${where}: duplicate id "${a.id}"`); ids.add(a.id); }
   if (a?.id && !/^[a-z0-9-]+$/.test(a.id)) errors.push(`${where}: id should be lowercase letters, digits and dashes`);
   if (a?.cat && !CATS.has(a.cat)) errors.push(`${where}: category "${a.cat}" must be one of ${[...CATS].join(", ")}`);
+  if (a?.platform && !PLATFORMS.has(a.platform)) errors.push(`${where}: platform "${a.platform}" must be one of ${[...PLATFORMS].join(", ")} (leave it out for Defender)`);
   if (a?.sev && !SEVS.has(a.sev)) errors.push(`${where}: severity "${a.sev}" must be one of ${[...SEVS].join(", ")}`);
   (a?.mitre || []).forEach(m => { if (!/^T\d{4}(\.\d{3})?$/.test(m)) warnings.push(`${where}: MITRE ID "${m}" looks malformed`); });
   if (!Array.isArray(a?.steps) || !a.steps.length) return;
@@ -62,7 +64,8 @@ alerts.forEach((a, i) => {
       if (LIST_TOKENS.has(t) && quoted) errors.push(`${sw}: {{${t}}} is a list token and must not be wrapped in quotes`);
     }
     if (/\{\{[^}]*$/.test(s.kql)) errors.push(`${sw}: unclosed {{ token`);
-    const text = s.kql.replace(/\{\{[A-Z0-9_]+\}\}/g, "");
+    // Ignore fill-in tokens and private CIDR ranges (10.0.0.0/8 etc. are not tenant data).
+    const text = s.kql.replace(/\{\{[A-Z0-9_]+\}\}/g, "").replace(/\b(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))(?:\.\d{1,3}){1,3}\/\d{1,2}\b/g, "");
     for (const [re, label] of REAL_ID) if (re.test(text)) warnings.push(`${sw}: contains ${label}. Use a fill-in token instead of real tenant data.`);
     for (const [table, cols] of Object.entries(SCHEMA)) {
       if (!new RegExp(`\\b${table}\\b`).test(s.kql)) continue;
