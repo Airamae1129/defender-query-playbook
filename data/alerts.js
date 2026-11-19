@@ -1762,6 +1762,76 @@ window.PLAYBOOK_ALERTS = [
     "platform": "Sentinel"
   },
   {
+    "id": "sentinel-auditlogs-investigation",
+    "name": "Sentinel: Entra ID audit log investigation (AuditLogs)",
+    "cat": "Identity",
+    "platform": "Sentinel",
+    "src": "Microsoft Sentinel (Log Analytics)",
+    "sev": "medium",
+    "mitre": [
+      "T1098",
+      "T1098.003",
+      "T1556.006",
+      "T1136.003",
+      "T1484"
+    ],
+    "playbook": true,
+    "summary": "Who changed what in Entra ID: changes made to a user, changes made by an actor or from an IP, MFA and password changes, roles and groups, app consent and secrets, Conditional Access, and new users or guests.",
+    "steps": [
+      {
+        "ctx": "Everything done TO the user (target)",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where TargetResources has \"{{UPN}}\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| project TimeGenerated, OperationName, Category, Result, Actor, ActorIP, Target, LoggedByService, CorrelationId\n| order by TimeGenerated desc",
+        "read": "Put the user in User (UPN). Read it as a story: password reset, new MFA method, role or group added, all shortly after a risky sign-in = account takeover."
+      },
+      {
+        "ctx": "Everything done BY an actor (admin, user or app)",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where InitiatedBy has \"{{ACTOR}}\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| summarize Count = count(), Targets = make_set(Target, 50), IPs = make_set(ActorIP, 20), First = min(TimeGenerated), Last = max(TimeGenerated) by OperationName, Result\n| order by Last desc",
+        "read": "Put the admin UPN or app name in Actor / inviter UPN. Many different operations from one actor in a short time, or from an unfamiliar IP, needs confirming with that admin."
+      },
+      {
+        "ctx": "Audit changes made from a specific IP",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where tostring(InitiatedBy.user.ipAddress) == \"{{IP}}\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target\n| order by TimeGenerated desc",
+        "read": "Use the suspicious sign-in IP: any directory change from it was made by whoever controlled the session."
+      },
+      {
+        "ctx": "MFA / security info registered or removed",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where Category == \"UserManagement\" or LoggedByService == \"Authentication Methods\"\n| where OperationName has_any (\"security info\", \"StrongAuthentication\", \"authentication method\", \"Authenticator\")\n| where TargetResources has \"{{UPN}}\" or InitiatedBy has \"{{UPN}}\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target, ResultReason\n| order by TimeGenerated desc",
+        "read": "A new phone or Authenticator app registered from a foreign IP right after a suspicious sign-in is attacker persistence (T1556.006). Remove the method and revoke sessions."
+      },
+      {
+        "ctx": "Password resets and changes",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where OperationName in (\"Reset password (by admin)\", \"Reset user password\", \"Change user password\", \"Change password (self-service)\", \"Reset password (self-service)\")\n| where TargetResources has \"{{UPN}}\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target\n| order by TimeGenerated desc",
+        "read": "Self-service reset from an unknown IP, or an admin reset nobody requested, needs confirming with the user and the helpdesk."
+      },
+      {
+        "ctx": "Directory roles and group membership added",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where OperationName in (\"Add member to role\", \"Add eligible member to role\", \"Add member to role completed (PIM activation)\", \"Add member to group\", \"Add owner to group\")\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| extend RoleOrGroup = tostring(TargetResources[1].displayName)\n| extend RoleOrGroup = iff(isempty(RoleOrGroup), tostring(parse_json(tostring(TargetResources[0].modifiedProperties))[1].newValue), RoleOrGroup)\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target, RoleOrGroup\n| order by TimeGenerated desc",
+        "read": "Global Administrator, Privileged Role Administrator, Exchange/SharePoint Administrator, or groups that grant VPN or admin access, are high priority without a change ticket."
+      },
+      {
+        "ctx": "App consent, new apps and new secrets / certificates",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where OperationName in (\"Consent to application\", \"Add application\", \"Add service principal\", \"Add service principal credentials\", \"Add delegated permission grant\", \"Add app role assignment to service principal\")\n    or OperationName has \"Certificates and secrets management\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| extend Details = tostring(TargetResources[0].modifiedProperties)\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target, Details\n| order by TimeGenerated desc",
+        "read": "User consent to an unknown app with Mail.Read, Files.ReadWrite.All or offline_access is illicit consent phishing. New secrets on an existing app are a backdoor into the tenant."
+      },
+      {
+        "ctx": "Conditional Access and authentication policy changes",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where Category == \"Policy\" or OperationName has_any (\"conditional access\", \"named location\", \"authentication methods policy\", \"Set Company Information\", \"Set domain authentication\")\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target\n| order by TimeGenerated desc",
+        "read": "Disabled or weakened CA policies, new trusted named locations, or a domain switched to federated are defence evasion; confirm each with the identity team."
+      },
+      {
+        "ctx": "Users created or deleted, and guests invited",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where OperationName in (\"Add user\", \"Delete user\", \"Hard delete user\", \"Invite external user\", \"Redeem external user invite\", \"Restore user\")\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| project TimeGenerated, OperationName, Result, Actor, ActorIP, Target\n| order by TimeGenerated desc",
+        "read": "Accounts created outside the joiner process, by a normal user, or by an app, need confirming. Guests from personal email domains deserve a look."
+      },
+      {
+        "ctx": "Failed audit operations (blocked or denied changes)",
+        "kql": "AuditLogs\n| where TimeGenerated > ago({{LOOKBACK}})\n| where Result != \"success\"\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n         ActorIP = tostring(InitiatedBy.user.ipAddress),\n         Target = coalesce(tostring(TargetResources[0].userPrincipalName), tostring(TargetResources[0].displayName))\n| summarize Failures = count(), Operations = make_set(OperationName, 20), Reasons = make_set(ResultReason, 10) by Actor, ActorIP\n| order by Failures desc",
+        "read": "Repeated failed admin operations from one actor can mean someone probing permissions with a stolen account."
+      }
+    ],
+    "fp": "Helpdesk resets and MFA re-registration after a phone change, PIM activations by on-call admins, IAM / HR provisioning tools, and app registrations by developers."
+  },
+  {
     "id": "sentinel-securityevent",
     "name": "Sentinel log sample: SecurityEvent (Windows Security events)",
     "cat": "Endpoint",
