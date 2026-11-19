@@ -2122,7 +2122,7 @@ window.PLAYBOOK_ALERTS = [
     "mitre": [
       "T1078"
     ],
-    "summary": "Day-to-day SigninLogs checks for one or more users: successful sign-ins, sign-ins from a specific IP, the devices used, and the time range seen per location.",
+    "summary": "Day-to-day SigninLogs checks for one or more users: successful sign-ins, sign-ins (all or successful only) from a specific IP, the devices used, and the time range seen per location.",
     "steps": [
       {
         "ctx": "Successful sign-ins for the user",
@@ -2133,6 +2133,11 @@ window.PLAYBOOK_ALERTS = [
         "ctx": "All sign-in attempts for the user from a specific IP",
         "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where IPAddress == \"{{IP}}\"\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, ResourceDisplayName,\n          ResultType, ResultSignature, ResultDescription, ConditionalAccessStatus, AuthenticationRequirement\n| order by TimeGenerated desc",
         "read": "No success rows (only failures or 50126/50053) means the attempt did not get in. A success with MFA satisfied from an unknown IP needs the user confirmed."
+      },
+      {
+        "ctx": "Successful sign-ins for the user from a specific IP",
+        "kql": "SigninLogs\n| where TimeGenerated > ago({{BASELINE}})\n| where UserPrincipalName =~ \"{{UPN}}\"\n| where IPAddress == \"{{IP}}\"\n| where ResultType == \"0\"   // 0 = success\n| project TimeGenerated, UserPrincipalName, IPAddress, Location, AppDisplayName, ResourceDisplayName, ResultSignature, ResultType\n| order by TimeGenerated desc",
+        "read": "Fill User (UPN) and IP. Rows mean the IP really got into the account: confirm with the user, and if it is not theirs revoke sessions and reset the password. No rows = no successful sign-in from that IP in the baseline window."
       },
       {
         "ctx": "Successful sign-ins from the IP across all users",
